@@ -17,8 +17,13 @@ import { Directory, Paths, File as ExpoFile } from "expo-file-system";
 import { router } from "expo-router";
 import { uploadCsv } from "../service/History";
 
-const rawBase = __DEV__ ? API_DEV : API_PROD;
+const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
 const baseURL = rawBase?.replace(/\/+$/, "");
+
+console.log("====================================");
+console.log("Resolved Base URL:", baseURL);
+console.log("Is DEV mode?", __DEV__);
+console.log("====================================");
 
 // same helper as history/index.tsx
 const getO2dataDir = (patientId: string) =>
@@ -88,20 +93,21 @@ export default function ShareScreen() {
 
     try {
       setUploading(true);
-
       const dir = await ensureDir(patientID);
 
-      // read contents from the shared file path
-      const src = new ExpoFile(file.path);
-      const text = await src.text();
+      // Read safely from Android content:// URI
+      const response = await fetch(file.path);
+      const text = await response.text();
 
-      // use original filename if possible, or a fallback
-      const storageName =
-        file.fileName && file.fileName.length > 0
-          ? file.fileName
-          : `${Date.now()}.csv`;
+      if (!text) {
+        throw new Error("Shared file content is empty or unreadable.");
+      }
 
-      let dest = new ExpoFile(dir, storageName);
+      const storageName = file.fileName && file.fileName.length > 0
+        ? file.fileName
+        : `${Date.now()}.csv`;
+
+      const dest = new ExpoFile(dir, storageName);
       if (dest.exists === true) {
         await dest.delete();
       }
@@ -114,22 +120,15 @@ export default function ShareScreen() {
         baseURL,
       });
 
-      // Success (uploadCsv resolves on 2xx/409)
       Alert.alert("Success", "File saved and uploaded for this patient.");
-      // clear share intent so it doesn't repeat if user comes back
       resetShareIntent();
-      // send the user back to the main history tab after a successful upload
       router.replace("/(tabs)/history");
     } catch (e: any) {
-      console.error("Error@Share.tsx:", e?.message ?? e);
-      Alert.alert(
-        "Error@Share.tsx",
-        "Upload failed. Please check your network."
-      );
+      console.error("Error@Share.tsx:", e);
+      Alert.alert("Error@Share.tsx", e?.message ?? "An error occurred during upload.");
     } finally {
       setUploading(false);
     }
-  };
 
   // Loading states
   if (loadingPatient) {
