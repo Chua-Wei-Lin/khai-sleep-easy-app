@@ -47,6 +47,14 @@ export type RealtimeEvent = {
   ts: number;
 };
 
+export type RtPpgEvent = {
+    ir: number[];
+    red: number[];
+    motion: number[];
+    size: number;
+    ts: number;
+  };
+
 export type InfoEvent = {
   battery?: number | null;
   batteryState?: number | null;
@@ -58,6 +66,13 @@ export type HistoryFileEvent = {
   csv: string;
   startTime: number;
 };
+
+  export type PpgFileEvent = {
+    sampleInts: number[];
+    sampleRate: number;
+    sampleTime: number;
+    sn: string;
+  };
 
 export type ReadProgressEvent = {
   progress: number;
@@ -138,6 +153,10 @@ export function addRealtimeListener(listener: (e: RealtimeEvent) => void) {
   return (emitter.addListener as any)("onRealtime", listener);
 }
 
+export function addRtPpgListener(listener: (e: RtPpgEvent) => void) {
+  return (emitter.addListener as any)("onRtPpg", listener);
+}
+
 export function addInfoListener(listener: (e: InfoEvent) => void) {
   return (emitter.addListener as any)("onInfo", listener);
 }
@@ -156,4 +175,8 @@ export function addReadProgressListener(
 
 export function addErrorListener(listener: (e: ErrorEvent) => void) {
   return (emitter.addListener as any)("onError", listener);
+}
+
+export function addPpgFileListener(listener: (e: PpgFileEvent) => void) {
+  return (emitter.addListener as any)("onPpgFile", listener);
 }

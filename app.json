@@ -27,7 +27,6 @@
         "foregroundImage": "./assets/sleepeasylogo-android.png",
         "backgroundColor": "#ffffff"
       },
-      "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true,
       "package": "com.sleepeasy.app"
     },
@@ -40,6 +39,14 @@
       "expo-router",
       "expo-font",
       "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
       [
         "expo-share-intent",
         {

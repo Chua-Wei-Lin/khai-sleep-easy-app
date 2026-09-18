@@ -20,6 +20,8 @@ import com.lepu.blepro.ext.oxy.DeviceInfo
 import com.lepu.blepro.ext.oxy.OxyFile
 import com.lepu.blepro.ext.oxy.OxyFile.EachData
 import com.lepu.blepro.ext.oxy.RtParam
+import com.lepu.blepro.ext.oxy2.PpgFile
+import com.lepu.blepro.ext.oxy2.RtPpg
 import com.lepu.blepro.objs.Bluetooth
 import expo.modules.kotlin.events.EventEmitter
 import expo.modules.kotlin.exception.CodedException
@@ -50,8 +52,10 @@ class ViatomModule : Module() {
             "onConnected", // { mac, model }
             "onDisconnected", // { mac?, model?, reason? }
             "onRealtime", // { spo2, pr, pi, motion, ts }
+            "onRtPpg", //
             "onInfo", // { battery, state, files }
             "onHistoryFile", // { csv, startTime }
+            "onPpgFile", //
             "onReadProgress", // { progress }
             "onError" // { code, message }
     )
@@ -301,6 +305,36 @@ class ViatomModule : Module() {
       connectedMac = null
     }
   }
+    // 7. Real-time raw PPG stream listener
+    addObserver(InterfaceEvent.Oxy.EventOxyRtPpgData, InterfaceEvent::class.java) { evt ->
+        val ppg = evt.data as? RtPpg ?: return@addObserver
+
+        emitter?.emit(
+            "onRtPpg",
+            mapOf(
+                "ir" to ppg.irArray.toList(),
+                "red" to ppg.redArray.toList(),
+                "motion" to ppg.motionArray.toList(),
+                "size" to ppg.size,
+                "ts" to System.currentTimeMillis()
+            )
+        )
+    }
+
+// 8. Historical raw PPG file read listener
+    addObserver(InterfaceEvent.Oxy.EventOxyReadFilePpgComplete, InterfaceEvent::class.java) { evt ->
+        val file = evt.data as? PpgFile ?: return@addObserver
+
+        emitter?.emit(
+            "onPpgFile",
+            mapOf(
+                "sampleInts" to file.sampleIntsData.toList(),
+                "sampleRate" to file.sampleRate,
+                "sampleTime" to file.sampleTime,
+                "sn" to file.sn
+            )
+        )
+    }
 
   // Convert OxyFile to CSV aligned with historical format
   private fun convertOxyFileToCsv(file: OxyFile): String {

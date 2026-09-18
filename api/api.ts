@@ -56,3 +56,32 @@ export default axios.create({
   baseURL,
   headers: authHeader ? { Authorization: authHeader } : undefined,
 });
+
+export async function uploadRawPpgPayload(payload: {
+  sampleInts: number[];
+  sampleRate: number;
+  startTime: number;
+  sn: string;
+  patientId: string | null;
+}) {
+  try {
+    const auth = authHeader ? { Authorization: authHeader } : {};
+
+    const response = await fetch(`${baseURL}/upload_ppg.php`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...auth,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed with status ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.warn("Error@api.ts/uploadRawPpgPayload:", error);
+  }
+}

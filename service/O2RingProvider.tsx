@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useMemo,
   useState,
 } from "react";
@@ -13,6 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import { API_DEV, API_PROD } from "@env";
 import { uploadPendingCsvs, UploadItem } from "./History";
+import { uploadRawPpgPayload } from "../api/api";
 
 const REALTIME_STALE_TIMEOUT_MS = 5000;
 const READ_TIMEOUT_MS = 30000;
@@ -535,11 +537,19 @@ const processReadQueue = useCallback(() => {
     };
   }, []);
 
+  const ppgBufferRef = useRef<{ ir: number[]; red: number[]; motion: number[] }>({
+    ir: [],
+    red: [],
+    motion: []
+  });
+
   // Initialize native module + listeners once.
   // Everything inside the setup callback deals with native events so we centralize
   // cleanup logic here as well.
   useEffect(() => {
     let subRt: Subscription | null = null;
+    let subRtPpg: Subscription | null = null;
+    let subPpgFile: Subscription | null = null;
     let subErr: Subscription | null = null;
     let subDev: Subscription | null = null;
     let subDisc: Subscription | null = null;
@@ -566,6 +576,35 @@ const processReadQueue = useCallback(() => {
         if (Platform.OS === "ios") {
           setIosRealtimeReady((prev) => (prev ? prev : true));
         }
+      });
+
+      subRtPpg = O2Ring.addRtPpgListener((ppg) => {
+        if (ppg?.ir && ppg?.red) {
+          ppgBufferRef.current.ir.push(...ppg.ir);
+          ppgBufferRef.current.red.push(...ppg.red);
+          if (ppg.motion) {
+            ppgBufferRef.current.motion.push(...ppg.motion);
+          }
+      // Log every ~100 samples to verify continuous streaming
+          if (ppgBufferRef.current.ir.length % 150 === 0) {
+            console.log(`[PPG Stream Active] Captured ${ppgBufferRef.current.ir.length} raw IR points`);
+          }
+        }
+      });
+
+      subPpgFile = O2Ring.addPpgFileListener(async (ppgFile) => {
+        // Safe metadata logging: logs array length only, avoiding serializing the whole array
+        const totalPoints = ppgFile.sampleInts?.length ?? 0;
+        console.log(`[PpgFile Received] Sample Rate: ${ppgFile.sampleRate}Hz | Data Points: ${totalPoints}`);
+
+        // Serialize raw PPG array and transmit to AI gateway on XAMPP server
+        await uploadRawPpgPayload({
+          sampleInts: ppgFile.sampleInts,
+          sampleRate: ppgFile.sampleRate,
+          startTime: ppgFile.sampleTime,
+          sn: ppgFile.sn,
+          patientId: patientIdRef.current
+        });
       });
 
       subErr = O2Ring.addErrorListener((err) => {
@@ -625,6 +664,7 @@ const processReadQueue = useCallback(() => {
       subDisc = O2Ring.addDisconnectedListener(() => {
         const prevDevice = connectedDeviceRef.current;
         const wasIntentional = intentionalDisconnectRef.current;
+        ppgBufferRef.current = { ir: [], red: [], motion: [] };
         const isConnecting = connectingRef.current;
         if (!wasIntentional && !isConnecting && prevDevice) {
           setOfflineDevice(prevDevice);
@@ -811,6 +851,8 @@ const processReadQueue = useCallback(() => {
 
     return () => {
       subRt?.remove();
+      subRtPpg?.remove();
+      subPpgFile?.remove();
       subErr?.remove();
       subDev?.remove();
       subDisc?.remove();
