@@ -129,7 +129,7 @@ export default function ShareScreen() {
     } finally {
       setUploading(false);
     }
-
+  };
   // Loading states
   if (loadingPatient) {
     return (
