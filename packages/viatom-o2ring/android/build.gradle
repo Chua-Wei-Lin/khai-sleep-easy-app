@@ -12,7 +12,7 @@ android {
 
 repositories {
     flatDir {
-        dirs "$projectDir/libs"
+        dirs "$rootDir/../packages/viatom-o2ring/android/libs"
     }
 }
 
