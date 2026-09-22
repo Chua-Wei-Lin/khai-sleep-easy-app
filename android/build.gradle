@@ -17,9 +17,16 @@ allprojects {
     google()
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
-    
   }
 }
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
+
+allprojects {
+    repositories {
+        flatDir {
+            dirs "$rootDir/../packages/viatom-o2ring/android/libs"
+        }
+    }
+}
