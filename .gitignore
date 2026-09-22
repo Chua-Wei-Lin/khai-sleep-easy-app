@@ -10,7 +10,6 @@ web-build/
 expo-env.d.ts
 
 # Native
-android/
 ios/
 .kotlin/
 *.orig.*
@@ -39,7 +38,6 @@ yarn-error.*
 *.tsbuildinfo
 
 # Android build artifacts
-android/
 android/.gradle/
 android/.cxx/
 android/app/build/
