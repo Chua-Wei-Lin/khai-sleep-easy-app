@@ -1,4 +1,12 @@
 import { EventEmitter, requireNativeModule } from "expo-modules-core";
+import { NativeModules, Platform } from 'react-native';
+import Viatom from '@ios-app/viatom-o2ring';
+// Check if the module is linked on Android
+const ViatomModule = NativeModules.Viatom;
+
+if (!ViatomModule) {
+  console.warn("Viatom native module is not available in this build!");
+}
 
 type NativeViatomModule = {
   requestPermissions(): Promise<boolean>;
