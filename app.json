@@ -39,12 +39,12 @@
       "expo-router",
       "expo-font",
       "expo-asset",
+      "./packages/viatom-o2ring/plugin/withViatomO2Ring.js",
       [
         "expo-build-properties",
         {
           "android": {
             "usesCleartextTraffic": true,
-            "buildToolsVersion": "34.0.0",
             "packagingOptions": {
               "pickFirst": ["**/libreactnative.so"]
             },

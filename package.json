@@ -2,6 +2,9 @@
   "name": "sleep-easy-app",
   "version": "1.0.0",
   "main": "expo-router/entry",
+  "workspaces": [
+  "packages/*"
+  ],
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
