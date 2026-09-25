@@ -114,7 +114,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const isDownloadingHistoryRef = React.useRef(false);
   const totalFilesToDownload = React.useRef(0);
   const downloadedFiles = React.useRef(0);
-  const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
+  const rawBase = API_DEV || "http://192.168.68.77/SleepEasy/ApiBackend";
   const baseURL = rawBase?.replace(/\/+$/, "");
 
   console.log("====================================");
@@ -593,18 +593,45 @@ const processReadQueue = useCallback(() => {
       });
 
       subPpgFile = O2Ring.addPpgFileListener(async (ppgFile) => {
-        // Safe metadata logging: logs array length only, avoiding serializing the whole array
         const totalPoints = ppgFile.sampleInts?.length ?? 0;
         console.log(`[PpgFile Received] Sample Rate: ${ppgFile.sampleRate}Hz | Data Points: ${totalPoints}`);
 
-        // Serialize raw PPG array and transmit to AI gateway on XAMPP server
-        await uploadRawPpgPayload({
-          sampleInts: ppgFile.sampleInts,
-          sampleRate: ppgFile.sampleRate,
-          startTime: ppgFile.sampleTime,
-          sn: ppgFile.sn,
-          patientId: patientIdRef.current
-        });
+        const patient = patientIdRef.current ?? (await syncPatientId());
+        if (!patient) {
+          console.warn("PPG File received but no patientId found.");
+          return;
+        }
+
+        try {
+          // 1. Save PPG CSV locally on disk
+          const savedPpg = await savePpgCsv({
+            sampleInts: ppgFile.sampleInts,
+            sampleRate: ppgFile.sampleRate,
+            startTime: ppgFile.sampleTime,
+            sn: ppgFile.sn,
+            patientId: patient,
+          });
+
+          // 2. Transmit raw JSON payload to server endpoint
+          await uploadRawPpgPayload({
+            sampleInts: ppgFile.sampleInts,
+            sampleRate: ppgFile.sampleRate,
+            startTime: ppgFile.sampleTime,
+            sn: ppgFile.sn,
+            patientId: patient,
+          });
+
+          // 3. (Optional) Auto-upload local PPG CSV if backend supports full CSV uploads
+          if (baseURL && savedPpg) {
+            await uploadPendingCsvs({
+              patientId: patient,
+              items: [savedPpg],
+              baseURL,
+            });
+          }
+        } catch (err) {
+          console.warn("Error saving/uploading PPG file: ", err);
+        }
       });
 
       subErr = O2Ring.addErrorListener((err) => {
@@ -1142,6 +1169,44 @@ const processReadQueue = useCallback(() => {
     // 3. Write the modified CSV instead of original
     await file.write(formattedCsv, { encoding: "utf8" });
 
+    return { id: fileName, uri: file.uri };
+  };
+
+  /**
+   * Helper to save raw PPG signal data into a CSV file
+   */
+  const savePpgCsv = async (params: {
+    sampleInts: number[];
+    sampleRate: number;
+    startTime: number;
+    sn: string;
+    patientId: string;
+  }): Promise<UploadItem | null> => {
+    const { sampleInts, sampleRate, startTime, sn, patientId } = params;
+    if (!sampleInts || sampleInts.length === 0) return null;
+
+    // 1. Build CSV string header & lines
+    let csvContent = "sample_index,raw_ppg_value\n";
+    csvContent += sampleInts.map((val, idx) => `${idx},${val}`).join("\n");
+
+    // 2. Build filename matching your naming convention (e.g., PPG_Raw_1234_20260925101222.csv)
+    const last4 = (sn || "Device").slice(-4);
+    const ts = new Date((startTime || Date.now() / 1000) * 1000);
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const timeStr = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(
+      ts.getDate()
+    )}${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+
+    const fileName = `PPG_Raw_${last4}_${timeStr}.csv`;
+
+    // 3. Write file into patient's o2data folder via History.ts helper
+    const dir = await ensureDir(patientId);
+    const file = new ExpoFile(dir, fileName);
+
+    if (file.exists) await file.delete();
+    await file.write(csvContent, { encoding: "utf8" });
+
+    console.log(`[PPG CSV Saved]: ${fileName}`);
     return { id: fileName, uri: file.uri };
   };
 
