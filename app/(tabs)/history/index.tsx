@@ -252,7 +252,7 @@ export default function History() {
    * Format file name (for display not actually renaming)
    */
   const formatFileName = (name: string) => {
-    const isPpg = fileName.toLowerCase().includes("ppg");
+    const isPpg = name.toLowerCase().includes("ppg");
     // remove .csv (case-insensitive)
     const base = name.replace(/\.csv$/i, "");
 
@@ -270,7 +270,7 @@ export default function History() {
       const mm = core.slice(10, 12);
       const ss = core.slice(12, 14);
       const prefix = isPpg ? "[PPG Waveform]" : "[O2Ring]";
-      return `${prefix} ${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+      return `${prefix} ${y}-${m}-${d} ${hh}:${mm}:${ss}`;
     }
 
     // fallback: show whatever we got
@@ -430,7 +430,7 @@ export default function History() {
               onPress={() => {
                 router.push({
                   pathname: `/history/DetailedReport`,
-                  params: { id: file.name },
+                  params: { id: item.id },
                 });
               }}
               onLongPress={() => {

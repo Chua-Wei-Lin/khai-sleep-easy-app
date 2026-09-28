@@ -17,7 +17,7 @@ import { Directory, Paths, File as ExpoFile } from "expo-file-system";
 import { router } from "expo-router";
 import { uploadCsv } from "../service/History";
 
-const rawBase = API_DEV || "http://192.168.68.77/SleepEasy/ApiBackend";
+const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
 const baseURL = rawBase?.replace(/\/+$/, "");
 
 console.log("====================================");
