@@ -103,6 +103,7 @@ export default function History() {
       const csvs: HistoryItem[] = [];
       for (const f of files) {
         if (!f.name.toLowerCase().endsWith(".csv")) continue;
+        if (f.name.startsWith("PPG_Raw_")) continue;
 
         csvs.push({
           id: f.name,

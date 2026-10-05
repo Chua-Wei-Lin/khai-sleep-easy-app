@@ -20,7 +20,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sleepeasy.app"
+      "bundleIdentifier": "com.sleepeasy.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "SleepEasy requires Bluetooth to connect to and sync data from your O2Ring device.",
+        "NSBluetoothPeripheralUsageDescription": "SleepEasy requires Bluetooth access to discover nearby O2Ring devices."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -38,20 +42,19 @@
       "./app.plugin.js",
       "expo-router",
       "expo-font",
-      "expo-asset",
-      "./packages/viatom-o2ring/plugin/withViatomO2Ring.js",
       [
         "expo-build-properties",
         {
           "android": {
             "usesCleartextTraffic": true,
+            "ndkVersion": "26.1.10909125",
             "packagingOptions": {
-              "pickFirst": ["**/libreactnative.so"]
+              "pickFirst": [
+                "**/libreactnative.so",
+                "**/libc++_shared.so"
+              ]
             },
-            "extraGradleArgs": [
-              "-Pandroid.injected.build.abi=arm64-v8a"
-            ],
-            "abiFilters": ["arm64-v8a"]
+            "abiFilters": ["arm64-v8a", "x86_64"]
           }
         }
       ],

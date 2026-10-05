@@ -1,6 +1,14 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 buildscript {
+  ext {
+    buildToolsVersion = "35.0.0"
+    minSdkVersion = 24
+    compileSdkVersion = 35
+    targetSdkVersion = 35
+    //ndkVersion = "26.1.10909125" // Pin explicitly
+    ANDROID_STL = "c++_shared"
+  }
   repositories {
     google()
     mavenCentral()
@@ -20,13 +28,27 @@ allprojects {
   }
 }
 
+subprojects {
+  afterEvaluate { project ->
+    if (project.hasProperty('android')) {
+      project.android {
+        defaultConfig {
+          externalNativeBuild {
+            cmake {
+              arguments "-DANDROID_STL=c++_shared"
+            }
+            ndkBuild {
+              arguments "NDK_TOOLCHAIN_VERSION=clang", "APP_STL=c++_shared"
+            }
+          }
+          ndk {
+            stl "c++_shared"
+          }
+        }
+      }
+    }
+  }
+}
+
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
-
-allprojects {
-    repositories {
-        flatDir {
-            dirs "$rootDir/../packages/viatom-o2ring/android/libs"
-        }
-    }
-}

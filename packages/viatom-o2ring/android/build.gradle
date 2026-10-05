@@ -2,36 +2,59 @@ apply plugin: "com.android.library"
 apply plugin: "org.jetbrains.kotlin.android"
 
 android {
-  namespace "expo.modules.viatom"
-  compileSdkVersion 34
+    namespace "expo.modules.viatom"
+    compileSdkVersion 35
+    ndkVersion "27.1.12297006"
 
-  defaultConfig {
-    minSdkVersion 24
-  }
-}
+    packaging {
+        jniLibs {
+            pickFirsts += [
+                    '**/libc++_shared.so',
+                    '**/libreactnative.so'
+            ]
+        }
+    }
 
-repositories {
-    flatDir {
-        dirs "$rootDir/../packages/viatom-o2ring/android/libs"
+    defaultConfig {
+        minSdkVersion 24
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++20"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+    }
+
+    // This block must be a direct child of android { }, not inside defaultConfig
+    externalNativeBuild {
+        cmake {
+            path "../src/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
     }
 }
 
 dependencies {
-  // Expo Module Core
-  implementation project(':expo-modules-core')
-  implementation "org.jetbrains.kotlin:kotlin-stdlib"
+    // Expo Module Core
+    implementation project(':expo-modules-core')
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
 
-  // LiveEventBus + lifecycle
-  implementation project(':liveeventbus-x')
-  implementation "androidx.lifecycle:lifecycle-livedata-core-ktx:2.8.6"
+    // LiveEventBus + lifecycle
+    implementation project(':liveeventbus-x')
+    implementation "androidx.lifecycle:lifecycle-livedata-core-ktx:2.8.6"
 
-  // Required by underlying logging used in dependencies (avoids NoClassDefFoundError: CompositeStreamLogger)
-  implementation "io.getstream:stream-log-android:1.1.4"
-  implementation "io.getstream:stream-log-android-file:1.1.4"
+    // Logging dependencies required by Lepu SDK
+    implementation "io.getstream:stream-log-android:1.1.4"
+    implementation "io.getstream:stream-log-android-file:1.1.4"
 
-  // Nordic BLE observer interface required by Lepu SDK
-  implementation "no.nordicsemi.android:ble:2.7.2"
+    // Nordic BLE observer interface
+    implementation "no.nordicsemi.android:ble:2.7.2"
 
-  // Lepu BLE library pulled from local Maven repo
-  implementation(name: "lepu-blepro-1.0.7", ext: "aar")
+    // Local Lepu BLE AAR
+    implementation files("libs/lepu-blepro-1.3.9.aar")
 }

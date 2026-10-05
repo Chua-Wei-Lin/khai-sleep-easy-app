@@ -22,6 +22,7 @@ import com.lepu.blepro.ext.oxy.OxyFile.EachData
 import com.lepu.blepro.ext.oxy.RtParam
 import com.lepu.blepro.ext.oxy2.PpgFile
 import com.lepu.blepro.ext.oxy2.RtPpg
+import com.lepu.blepro.ext.oxy.RtWave
 import com.lepu.blepro.objs.Bluetooth
 import expo.modules.kotlin.events.EventEmitter
 import expo.modules.kotlin.exception.CodedException
@@ -34,7 +35,28 @@ class ViatomModule : Module() {
     private var emitter: EventEmitter? = null
     private var subscribed = false
     private var serviceInitialized = false
+    private val megaBp = MegaBpNative()
+    private val waveHandler = Handler(Looper.getMainLooper())
+    @Volatile private var wavePolling = false
+    @Volatile private var ppgSampleIndex = 0L
+    @Volatile private var ppgMaxSamples = 1250L
+    @Volatile private var wavePacketsSeen = 0
+    private var ppgCsvFile: java.io.File? = null
 
+    private val waveTask = object : Runnable {
+        override fun run() {
+            if (!wavePolling) return
+            val model = connectedModel
+            if (model == null) { wavePolling = false; return }
+            BleServiceHelper.BleServiceHelper.oxyGetRtWave(model)
+            waveHandler.postDelayed(this, 1000L)
+        }
+    }
+
+    private fun stopPpgCapture() {
+        wavePolling = false
+        waveHandler.removeCallbacksAndMessages(null)
+    }
     // Remember any scanned devices by MAC
     private val foundDevices = mutableMapOf<String, Bluetooth>()
 
@@ -57,7 +79,8 @@ class ViatomModule : Module() {
             "onHistoryFile",     // { csv, startTime }
             "onPpgFile",         // { sampleInts, sampleRate, sampleTime, sn }
             "onReadProgress",    // { progress }
-            "onError"            // { code, message }
+            "onError",            // { code, message }
+            "onWaveformReceived"
         )
 
         OnStartObserving { emitter = appContext.eventEmitter(this@ViatomModule) }
@@ -65,7 +88,7 @@ class ViatomModule : Module() {
             emitter = null
             clearObservers()
         }
-        OnDestroy { clearObservers() }
+        OnDestroy { stopPpgCapture(); clearObservers() }
 
         // ------------- BASIC FUNCTIONS EXPOSED TO JS -------------
 
@@ -140,8 +163,9 @@ class ViatomModule : Module() {
         // 7) Start realtime param stream
         AsyncFunction("startRealtime") {
             val model = connectedModel ?: throw CodedException("NO_DEVICE_CONNECTED")
-
-            BleServiceHelper.BleServiceHelper.oxyGetRtParam(model)
+            if (!wavePolling) {
+                BleServiceHelper.BleServiceHelper.oxyGetRtParam(model)
+            }
             true
         }
 
@@ -162,6 +186,39 @@ class ViatomModule : Module() {
             val model = connectedModel ?: throw CodedException("NO_DEVICE_CONNECTED")
 
             BleServiceHelper.BleServiceHelper.oxyReadFile(model, filename)
+            true
+        }
+
+        Function("initBpAlgorithm") {
+            megaBp.initNative()
+        }
+
+        Function("stopBpAlgorithm") {
+            megaBp.terminateNative()
+        }
+
+        AsyncFunction("startPpgCapture") { seconds: Int ->
+            val model = connectedModel ?: throw CodedException("NO_DEVICE_CONNECTED")
+            val dir = appContext.reactContext?.getExternalFilesDir(null)
+                ?: throw CodedException("NO_STORAGE")
+            val stamp = java.text.SimpleDateFormat("yyyyMMddHHmmss", java.util.Locale.US)
+                .format(java.util.Date())
+            val file = java.io.File(dir, "PPG_wave_$stamp.csv")
+            file.writeText("timestamp_ms,sample_index,time_s,ppg_value\n")
+
+            ppgCsvFile = file
+            ppgSampleIndex = 0L
+            ppgMaxSamples = seconds.toLong() * 125L
+            wavePacketsSeen = 0
+            wavePolling = true
+            waveHandler.removeCallbacksAndMessages(null)
+            waveHandler.post(waveTask)
+            Log.d("ViatomPPG", "PPG capture started model=$model file=${file.absolutePath}")
+            file.absolutePath
+        }
+
+        AsyncFunction("stopPpgCapture") {
+            stopPpgCapture()
             true
         }
     }
@@ -257,7 +314,7 @@ class ViatomModule : Module() {
             emitter?.emit("onInfo", payload)
 
             val model = connectedModel
-            if (model != null) {
+            if (model != null && !wavePolling) {
                 BleServiceHelper.BleServiceHelper.oxyGetRtParam(model)
             }
         }
@@ -326,6 +383,48 @@ class ViatomModule : Module() {
                     "sn" to file.sn
                 )
             )
+        }
+        // 9. Real-time waveform: one packet of ~125 samples (125 Hz)
+        addObserver(InterfaceEvent.Oxy.EventOxyRtData, InterfaceEvent::class.java) { evt ->
+            val rtWave = evt.data as? RtWave ?: return@addObserver
+            val wFs = rtWave.wFs ?: return@addObserver
+            if (wFs.isEmpty()) return@addObserver
+
+            // The first packet after starting is stale buffer data, so skip it
+            if (wavePolling && wavePacketsSeen++ == 0) {
+                Log.d("ViatomPPG", "skipping first (stale) packet")
+                return@addObserver
+            }
+
+            val ts = System.currentTimeMillis()
+            val file = ppgCsvFile
+
+            if (wavePolling && file != null) {
+                val csv = StringBuilder()
+                for (sample in wFs) {
+                    if (ppgSampleIndex >= ppgMaxSamples) break
+                    val timeS = String.format(java.util.Locale.US, "%.3f", ppgSampleIndex / 125.0)
+                    csv.append(ts).append(',').append(ppgSampleIndex).append(',')
+                        .append(timeS).append(',').append(sample).append('\n')
+                    ppgSampleIndex++
+                }
+                try { file.appendText(csv.toString()) }
+                catch (e: Exception) { Log.w("ViatomPPG", "CSV write failed", e) }
+
+                Log.d("ViatomPPG", "PPG saved $ppgSampleIndex/$ppgMaxSamples spo2=${rtWave.spo2} pr=${rtWave.pr}")
+
+                if (ppgSampleIndex >= ppgMaxSamples) {
+                    stopPpgCapture()
+                    Log.d("ViatomPPG", "PPG capture complete: ${file.absolutePath}")
+                }
+
+                // keep SpO2/PR updating while wave polling replaces param polling
+                emitter?.emit("onRealtime", mapOf(
+                    "spo2" to rtWave.spo2, "pr" to rtWave.pr,
+                    "pi" to rtWave.pi, "motion" to 0, "ts" to ts))
+            }
+
+            emitter?.emit("onWaveformReceived", mapOf("wFs" to wFs.toList(), "ts" to ts))
         }
     }
 
@@ -425,7 +524,33 @@ class ViatomModule : Module() {
             iface.dobl()
         }
     }
+    private fun handlePpgEvent(tag: String, evt: InterfaceEvent) {
+        val d = evt.data
+        Log.d("ViatomPPG", "$tag model=${evt.model} dataClass=${d?.javaClass?.name} data=$d")
 
+        when (d) {
+            is com.lepu.blepro.ext.oxy.RtPpg -> emitter?.emit(
+                "onRtPpg",
+                mapOf(
+                    "ir" to (d.ir?.toList() ?: emptyList<Int>()),
+                    "red" to (d.red?.toList() ?: emptyList<Int>()),
+                    "motion" to (d.motion?.toList() ?: emptyList<Int>()),
+                    "size" to d.size,
+                    "ts" to System.currentTimeMillis()
+                )
+            )
+            is RtPpg -> emitter?.emit(
+                "onRtPpg",
+                mapOf(
+                    "ir" to (d.irArray?.toList() ?: emptyList<Int>()),
+                    "red" to (d.redArray?.toList() ?: emptyList<Int>()),
+                    "motion" to (d.motionArray?.toList() ?: emptyList<Int>()),
+                    "size" to d.size,
+                    "ts" to System.currentTimeMillis()
+                )
+            )
+        }
+    }
     private fun <T> addObserver(key: String, clazz: Class<T>, block: (T) -> Unit) {
         val observer = Observer<T> { block(it) }
         runOnMain {

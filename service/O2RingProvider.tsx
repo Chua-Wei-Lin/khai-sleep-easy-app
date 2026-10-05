@@ -7,14 +7,23 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { useO2RingBpStream } from "viatom-o2ring";
 import { File as ExpoFile } from "expo-file-system";
 import * as O2Ring from "@ios-app/viatom-o2ring";
-import { ensureDir } from "./History";
+import { ensureDir, uploadPendingCsvs, UploadItem } from "./History";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform } from "react-native";
+import { Platform, NativeModules } from "react-native";
 import { API_DEV, API_PROD } from "@env";
-import { uploadPendingCsvs, UploadItem } from "./History";
 import { uploadRawPpgPayload } from "../api/api";
+import { requireOptionalNativeModule } from "expo-modules-core";
+
+const isNativeModuleAvailable = (): boolean => {
+  try {
+    return !!requireOptionalNativeModule("Viatom");
+  } catch {
+    return false;
+  }
+};
 
 const REALTIME_STALE_TIMEOUT_MS = 5000;
 const READ_TIMEOUT_MS = 30000;
@@ -22,7 +31,6 @@ const MAX_READ_RETRIES = 2;
 const HISTORY_DEVICE_KEY = "historyConnectedDevice";
 const LEGACY_HISTORY_DEVICE_KEY = "historyConnectedDeviceMac";
 const MAX_KNOWN_DEVICES = 5;
-
 type DeviceItem = O2Ring.DeviceFoundEvent;
 
 type Subscription = { remove: () => void };
@@ -145,6 +153,15 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
       });
 
     return syncingPatientId.current;
+
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeModuleAvailable()) {
+      console.warn(
+        "[O2RingProvider] Viatom native module is not available in this build! BLE sync and PPG data acquisition will be disabled until the next native build."
+      );
+    }
   }, []);
 
   // Load patient ID from AsyncStorage (same key used elsewhere)
@@ -901,6 +918,9 @@ const processReadQueue = useCallback(() => {
    * Start scanning for O2Ring devices
    */
   const startScan = useCallback(async () => {
+    isNativeModuleAvailable()
+
+
     const ok = hasPermission ? true : await requestPermissions();
     if (!ok) return false;
 
@@ -999,7 +1019,7 @@ const processReadQueue = useCallback(() => {
           setServiceReady(false);
         }
         setIosRealtimeReady(Platform.OS === "android");
-
+        console.log("[O2Ring] connecting", device.name, "model:", device.model);
         await O2Ring.connect(device.mac, device.model);
 
         // Mark as connected; realtime will start when onServiceReady fires
@@ -1173,7 +1193,7 @@ const processReadQueue = useCallback(() => {
   };
 
   /**
-   * Helper to save raw PPG signal data into a CSV file
+   * Helper to save raw PPG signal data into a CSV file with timeout & chunking safety
    */
   const savePpgCsv = async (params: {
     sampleInts: number[];
@@ -1183,37 +1203,81 @@ const processReadQueue = useCallback(() => {
     patientId: string;
   }): Promise<UploadItem | null> => {
     const { sampleInts, sampleRate, startTime, sn, patientId } = params;
-    if (!sampleInts || sampleInts.length === 0) return null;
 
-    // 1. Build CSV string header & lines
-    let csvContent = "sample_index,raw_ppg_value\n";
-    csvContent += sampleInts.map((val, idx) => `${idx},${val}`).join("\n");
+    // 1. Guard against null/empty buffers (Fix 3: Handle Read Timeout)
+    if (!sampleInts || !Array.isArray(sampleInts) || sampleInts.length === 0) {
+      console.warn("[savePpgCsv] Warning: Received empty or incomplete PPG array (likely due to read timeout). Skipping CSV creation.");
+      return null;
+    }
 
-    // 2. Build filename matching your naming convention (e.g., PPG_Raw_1234_20260925101222.csv)
-    const last4 = (sn || "Device").slice(-4);
-    const ts = new Date((startTime || Date.now() / 1000) * 1000);
-    const pad = (n: number) => n.toString().padStart(2, "0");
-    const timeStr = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(
-      ts.getDate()
-    )}${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+    try {
+      // 2. Efficiently build CSV string to prevent JS memory heap spikes on large streams
+      const fs = sampleRate > 0 ? sampleRate : 125;
+      const rawStart = startTime && !isNaN(startTime) ? startTime : Date.now() / 1000;
+      const startMs = rawStart > 1e11 ? rawStart : rawStart * 1000;
+      const totalSamples = sampleInts.length;
 
-    const fileName = `PPG_Raw_${last4}_${timeStr}.csv`;
+      const lines: string[] = ["timestamp_ms,sample_index,time_s,ppg_value"];
+      for (let i = 0; i < totalSamples; i++) {
+        const t = i / fs;
+        lines.push(
+          `${Math.round(startMs + t * 1000)},${i},${t.toFixed(3)},${sampleInts[i]}`
+        );
+      }
+      const csvContent = lines.join("\n");
 
-    // 3. Write file into patient's o2data folder via History.ts helper
-    const dir = await ensureDir(patientId);
-    const file = new ExpoFile(dir, fileName);
+      // 3. Build filename matching naming convention
+      const last4 = (sn || "Device").slice(-4);
 
-    if (file.exists) await file.delete();
-    await file.write(csvContent, { encoding: "utf8" });
+      // Ensure valid timestamp fallback if startTime is bad/undefined
+      const validStartTime = startTime && !isNaN(startTime) ? startTime : Date.now() / 1000;
+      const ts = new Date(validStartTime * 1000);
 
-    console.log(`[PPG CSV Saved]: ${fileName}`);
-    return { id: fileName, uri: file.uri };
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const timeStr = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(
+        ts.getDate()
+      )}${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+
+      const fileName = `PPG_Raw_${last4}_${timeStr}.csv`;
+
+      // 4. Write file into patient's o2data folder via History.ts helper
+      const dir = await ensureDir(patientId);
+      const file = new ExpoFile(dir, fileName);
+
+      if (file.exists) {
+        await file.delete();
+      }
+
+      await file.write(csvContent, { encoding: "utf8" });
+
+      console.log(`[PPG CSV Saved]: ${fileName} (${totalSamples} samples written)`);
+      return { id: fileName, uri: file.uri };
+
+    } catch (error) {
+      console.error("[savePpgCsv] Error generating/saving PPG CSV:", error);
+      return null;
+    }
   };
 
   const isRealtimeReady =
     Platform.OS === "android"
       ? !!connectedDevice
       : serviceReady && iosRealtimeReady && !!connectedDevice;
+
+  const ppgTestStarted = useRef(false);
+  useEffect(() => {
+    if (!__DEV__ || !connectedDevice || isDownloadingHistory || ppgTestStarted.current) return;
+    const t = setTimeout(async () => {
+      ppgTestStarted.current = true;
+      try {
+        const path = await (requireOptionalNativeModule("Viatom") as any)?.startPpgCapture(600);
+        console.log("[PPG test] capturing to", path);
+      } catch (e) {
+        console.warn("[PPG test] failed", e);
+      }
+    }, 10000);
+    return () => clearTimeout(t);
+  }, [connectedDevice, isDownloadingHistory]);
 
   const value = useMemo(
     () => ({
@@ -1283,9 +1347,15 @@ const processReadQueue = useCallback(() => {
   );
 
   return (
-    <O2RingContext.Provider value={value}>{children}</O2RingContext.Provider>
-  );
-}
+      <O2RingContext.Provider value={value}>
+        {/* O2RingBpStreamListener isn't defined yet; re-enable once it exists
+        {isNativeModuleAvailable && <O2RingBpStreamListener />}
+        */}
+        {children}
+      </O2RingContext.Provider>
+    );
+  }
+
 
 export function useO2Ring() {
   const ctx = useContext(O2RingContext);
