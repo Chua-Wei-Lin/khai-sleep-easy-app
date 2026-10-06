@@ -1264,20 +1264,37 @@ const processReadQueue = useCallback(() => {
       ? !!connectedDevice
       : serviceReady && iosRealtimeReady && !!connectedDevice;
 
-  const ppgTestStarted = useRef(false);
-  useEffect(() => {
-    if (!__DEV__ || !connectedDevice || isDownloadingHistory || ppgTestStarted.current) return;
-    const t = setTimeout(async () => {
-      ppgTestStarted.current = true;
-      try {
-        const path = await (requireOptionalNativeModule("Viatom") as any)?.startPpgCapture(600);
-        console.log("[PPG test] capturing to", path);
-      } catch (e) {
-        console.warn("[PPG test] failed", e);
-      }
-    }, 10000);
-    return () => clearTimeout(t);
-  }, [connectedDevice, isDownloadingHistory]);
+ const ppgTestStarted = useRef(false);
+ useEffect(() => {
+   if (!__DEV__ || !connectedDevice || isDownloadingHistory || ppgTestStarted.current) return;
+   const t = setTimeout(async () => {
+     ppgTestStarted.current = true;
+     const PPG_TEST_SECONDS = 10;
+     try {
+       const path: string = await (requireOptionalNativeModule("Viatom") as any)?.startPpgCapture(PPG_TEST_SECONDS);
+       console.log("[PPG test] capturing to", path);
+
+       // upload only after the capture has finished (+ margin for the skipped first packet and timing drift)
+       setTimeout(async () => {
+         console.log("[PPG test] upload timer fired");
+         const patient = patientIdRef.current ?? (await syncPatientId());
+         if (!patient || !baseURL) {
+           console.warn("[PPG test] no patient id or base URL, not uploading");
+           return;
+         }
+         const ok = await uploadPendingCsvs({
+           patientId: patient,
+           items: [{ id: path.split("/").pop()!, uri: "file://" + path }],
+           baseURL,
+         });
+         console.log("[PPG test] upload result", ok);
+       }, (PPG_TEST_SECONDS + 20) * 1000);
+     } catch (e) {
+       console.warn("[PPG test] failed", e);
+     }
+   }, 10000);
+   return () => clearTimeout(t);
+ }, [connectedDevice, isDownloadingHistory]);
 
   const value = useMemo(
     () => ({
