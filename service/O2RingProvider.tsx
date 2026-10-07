@@ -10,7 +10,7 @@ import React, {
 import { useO2RingBpStream } from "viatom-o2ring";
 import { File as ExpoFile } from "expo-file-system";
 import * as O2Ring from "@ios-app/viatom-o2ring";
-import { ensureDir, uploadPendingCsvs, UploadItem } from "./History";
+import { ensureDir, uploadPendingCsvs, uploadCsv, UploadItem } from "./History";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, NativeModules } from "react-native";
 import { API_DEV, API_PROD } from "@env";
@@ -1264,37 +1264,66 @@ const processReadQueue = useCallback(() => {
       ? !!connectedDevice
       : serviceReady && iosRealtimeReady && !!connectedDevice;
 
- const ppgTestStarted = useRef(false);
- useEffect(() => {
-   if (!__DEV__ || !connectedDevice || isDownloadingHistory || ppgTestStarted.current) return;
-   const t = setTimeout(async () => {
-     ppgTestStarted.current = true;
-     const PPG_TEST_SECONDS = 10;
-     try {
-       const path: string = await (requireOptionalNativeModule("Viatom") as any)?.startPpgCapture(PPG_TEST_SECONDS);
-       console.log("[PPG test] capturing to", path);
+    // Continuous PPG capture: one chunk at a time, each uploaded when finished
+    useEffect(() => {
+      if (!connectedDevice || isDownloadingHistory) return;
 
-       // upload only after the capture has finished (+ margin for the skipped first packet and timing drift)
-       setTimeout(async () => {
-         console.log("[PPG test] upload timer fired");
-         const patient = patientIdRef.current ?? (await syncPatientId());
-         if (!patient || !baseURL) {
-           console.warn("[PPG test] no patient id or base URL, not uploading");
-           return;
-         }
-         const ok = await uploadPendingCsvs({
-           patientId: patient,
-           items: [{ id: path.split("/").pop()!, uri: "file://" + path }],
-           baseURL,
-         });
-         console.log("[PPG test] upload result", ok);
-       }, (PPG_TEST_SECONDS + 20) * 1000);
-     } catch (e) {
-       console.warn("[PPG test] failed", e);
-     }
-   }, 10000);
-   return () => clearTimeout(t);
- }, [connectedDevice, isDownloadingHistory]);
+      let isCancelled = false;
+      const CHUNK_DURATION_SEC = 60; // TEST VALUE: set to 600 for 10-minute chunks
+      const vModule = requireOptionalNativeModule("Viatom") as any;
+
+      if (!vModule) {
+        console.warn("[PPG] Viatom native module not available for continuous capture.");
+        return;
+      }
+
+      const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+      const runChunkCapture = async () => {
+        while (!isCancelled && connectedDeviceRef.current) {
+          try {
+            const patientId = patientIdRef.current ?? (await syncPatientId());
+            if (!patientId || !baseURL) {
+              console.warn("[PPG] Missing patient ID or baseURL, waiting before retry...");
+              await sleep(10000);
+              continue;
+            }
+
+            console.log(`[PPG] Starting ${CHUNK_DURATION_SEC}s PPG capture chunk...`);
+            const path: string = await vModule.startPpgCapture(CHUNK_DURATION_SEC);
+
+            // native finishes by itself ~5 s after the nominal duration (first packet is skipped)
+            await sleep((CHUNK_DURATION_SEC + 15) * 1000);
+            if (isCancelled) break; // cleanup has already stopped the capture
+
+            await vModule.stopPpgCapture(); // harmless if native already finished
+
+            const fileName = path.split("/").pop();
+            if (fileName) {
+              const uri = "file://" + path; // native writes outside o2data
+              await uploadCsv({ patientId, item: { id: fileName, uri }, baseURL });
+              console.log("[PPG] Uploaded chunk:", fileName);
+              try {
+                new ExpoFile(uri).delete(); // only after a successful upload
+              } catch {}
+            }
+          } catch (e) {
+            console.warn("[PPG] Error in continuous capture/upload chunk:", e);
+            await sleep(15000);
+          }
+        }
+      };
+
+      const initialDelay = setTimeout(() => {
+        runChunkCapture();
+      }, 5000);
+
+      return () => {
+        isCancelled = true;
+        clearTimeout(initialDelay);
+        vModule.stopPpgCapture().catch(() => {});
+      };
+    }, [connectedDevice, isDownloadingHistory, baseURL]);
 
   const value = useMemo(
     () => ({
