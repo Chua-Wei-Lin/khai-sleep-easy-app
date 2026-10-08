@@ -1,12 +1,8 @@
 import { EventEmitter, requireNativeModule } from "expo-modules-core";
 import { NativeModules, Platform } from 'react-native';
-import Viatom from '@ios-app/viatom-o2ring';
 // Check if the module is linked on Android
 const ViatomModule = NativeModules.Viatom;
 
-if (!ViatomModule) {
-  console.warn("Viatom native module is not available in this build!");
-}
 
 type NativeViatomModule = {
   requestPermissions(): Promise<boolean>;
@@ -19,6 +15,9 @@ type NativeViatomModule = {
   stopRealtime(): Promise<boolean>;
   getInfo(): Promise<boolean>;
   readHistoryFile(filename: string): Promise<boolean>;
+  startPpgCapture(patientId: string, prefix: string, chunkSeconds: number): Promise<string>;
+  stopPpgCapture(): Promise<boolean>;
+  stopPpgService(): Promise<boolean>;
 };
 
 const Native: NativeViatomModule = requireNativeModule("Viatom");
@@ -187,4 +186,28 @@ export function addErrorListener(listener: (e: ErrorEvent) => void) {
 
 export function addPpgFileListener(listener: (e: PpgFileEvent) => void) {
   return (emitter.addListener as any)("onPpgFile", listener);
+}
+
+export type PpgChunkReadyEvent = {
+  path: string;
+  name: string;
+  dir: string;
+  rows: number;
+  startTs: number;
+};
+
+export function startPpgCapture(patientId: string, prefix: string, chunkSeconds: number) {
+  return Native.startPpgCapture(patientId, prefix, chunkSeconds);
+}
+
+export function stopPpgCapture() {
+  return Native.stopPpgCapture();
+}
+
+export function stopPpgService() {
+  return Native.stopPpgService();
+}
+
+export function addPpgChunkReadyListener(listener: (e: PpgChunkReadyEvent) => void) {
+  return (emitter.addListener as any)("onPpgChunkReady", listener);
 }

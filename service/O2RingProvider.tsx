@@ -8,11 +8,11 @@ import React, {
   useState,
 } from "react";
 import { useO2RingBpStream } from "viatom-o2ring";
-import { File as ExpoFile } from "expo-file-system";
+import { Directory, File as ExpoFile } from "expo-file-system";
 import * as O2Ring from "@ios-app/viatom-o2ring";
 import { ensureDir, uploadPendingCsvs, uploadCsv, UploadItem } from "./History";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform, NativeModules } from "react-native";
+import { Platform, NativeModules, PermissionsAndroid } from "react-native";
 import { API_DEV, API_PROD } from "@env";
 import { uploadRawPpgPayload } from "../api/api";
 import { requireOptionalNativeModule } from "expo-modules-core";
@@ -1264,66 +1264,79 @@ const processReadQueue = useCallback(() => {
       ? !!connectedDevice
       : serviceReady && iosRealtimeReady && !!connectedDevice;
 
-    // Continuous PPG capture: one chunk at a time, each uploaded when finished
-    useEffect(() => {
-      if (!connectedDevice || isDownloadingHistory) return;
-
-      let isCancelled = false;
-      const CHUNK_DURATION_SEC = 60; // TEST VALUE: set to 600 for 10-minute chunks
-      const vModule = requireOptionalNativeModule("Viatom") as any;
-
-      if (!vModule) {
-        console.warn("[PPG] Viatom native module not available for continuous capture.");
-        return;
-      }
-
-      const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-      const runChunkCapture = async () => {
-        while (!isCancelled && connectedDeviceRef.current) {
-          try {
-            const patientId = patientIdRef.current ?? (await syncPatientId());
-            if (!patientId || !baseURL) {
-              console.warn("[PPG] Missing patient ID or baseURL, waiting before retry...");
-              await sleep(10000);
-              continue;
+    // ---- Overnight PPG: native code records chunks; JS uploads them ----
+      const ppgDirRef = useRef<string | null>(null);
+      const ppgFlushing = useRef(false);
+      const PPG_CHUNK_SECONDS = 60;
+      const flushPpgChunks = useCallback(async () => {
+        const dirPath = ppgDirRef.current;
+        const patientId = patientIdRef.current;
+        if (!dirPath || !patientId || !baseURL || ppgFlushing.current) return;
+        ppgFlushing.current = true;
+        try {
+          const dir = new Directory("file://" + dirPath);
+          const files = (dir.list() as any[])
+            .filter((it) => typeof it?.name === "string" && it.name.startsWith("PPG_Raw") && it.name.endsWith(".csv"))
+            .sort((a, b) => (a.name < b.name ? -1 : 1));
+          for (const f of files) {
+            try {
+              await uploadCsv({ patientId, item: { id: f.name, uri: f.uri }, baseURL });
+              f.delete();
+              console.log("[PPG Chunk] uploaded and removed", f.name);
+            } catch (err) {
+              console.warn("[PPG Chunk] upload failed, will retry:", f.name, err);
+              break; // network is probably down; try again later
             }
-
-            console.log(`[PPG] Starting ${CHUNK_DURATION_SEC}s PPG capture chunk...`);
-            const path: string = await vModule.startPpgCapture(CHUNK_DURATION_SEC);
-
-            // native finishes by itself ~5 s after the nominal duration (first packet is skipped)
-            await sleep((CHUNK_DURATION_SEC + 15) * 1000);
-            if (isCancelled) break; // cleanup has already stopped the capture
-
-            await vModule.stopPpgCapture(); // harmless if native already finished
-
-            const fileName = path.split("/").pop();
-            if (fileName) {
-              const uri = "file://" + path; // native writes outside o2data
-              await uploadCsv({ patientId, item: { id: fileName, uri }, baseURL });
-              console.log("[PPG] Uploaded chunk:", fileName);
-              try {
-                new ExpoFile(uri).delete(); // only after a successful upload
-              } catch {}
-            }
-          } catch (e) {
-            console.warn("[PPG] Error in continuous capture/upload chunk:", e);
-            await sleep(15000);
           }
+        } catch (err) {
+          console.warn("[PPG Chunk] could not list chunk folder:", err);
+        } finally {
+          ppgFlushing.current = false;
         }
-      };
+      }, [baseURL]);
 
-      const initialDelay = setTimeout(() => {
-        runChunkCapture();
-      }, 5000);
+      // Lives for the whole provider lifetime, so the last chunk's event is never missed
+      useEffect(() => {
+        const sub = O2Ring.addPpgChunkReadyListener((e) => {
+          console.log("[PPG Chunk] ready:", e.name, "rows:", e.rows);
+          if (e.dir) ppgDirRef.current = e.dir;
+          flushPpgChunks();
+        });
+        const timer = setInterval(() => flushPpgChunks(), 5 * 60 * 1000);
+        return () => { sub.remove(); clearInterval(timer); };
+      }, [flushPpgChunks]);
 
-      return () => {
-        isCancelled = true;
-        clearTimeout(initialDelay);
-        vModule.stopPpgCapture().catch(() => {});
-      };
-    }, [connectedDevice, isDownloadingHistory, baseURL]);
+      // Start recording once the ring is connected and the history sync has finished
+      useEffect(() => {
+        if (!connectedDevice || isDownloadingHistory) return;
+        let cancelled = false;
+
+        const start = async () => {
+          try {
+            if (Platform.OS === "android" && Number(Platform.Version) >= 33) {
+              await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+            }
+            const patientId = patientIdRef.current ?? (await syncPatientId());
+            if (cancelled) return;
+            if (!patientId) { console.warn("[PPG] no patient id yet, not starting"); return; }
+            const last4 = String((connectedDevice as any)?.name ?? "device").slice(-4).replace(/\W/g, "");
+            const dir = await O2Ring.startPpgCapture(patientId, `PPG_Raw_${last4}`, PPG_CHUNK_SECONDS);
+            if (cancelled) { O2Ring.stopPpgCapture().catch(() => {}); return; }
+            ppgDirRef.current = dir;
+            console.log("[PPG] continuous capture started, chunks in", dir);
+            flushPpgChunks(); // upload anything left from an earlier session
+          } catch (e) {
+            console.warn("[PPG] could not start capture:", e);
+          }
+        };
+        const t = setTimeout(start, 5000);
+
+        return () => {
+          cancelled = true;
+          clearTimeout(t);
+          O2Ring.stopPpgCapture().catch(() => {}); // closes the open chunk; the listener above uploads it
+        };
+      }, [connectedDevice, isDownloadingHistory, flushPpgChunks]);
 
   const value = useMemo(
     () => ({

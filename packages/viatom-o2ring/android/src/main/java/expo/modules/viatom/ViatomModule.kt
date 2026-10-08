@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothDevice
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -38,25 +39,105 @@ class ViatomModule : Module() {
     private val megaBp = MegaBpNative()
     private val waveHandler = Handler(Looper.getMainLooper())
     @Volatile private var wavePolling = false
-    @Volatile private var ppgSampleIndex = 0L
-    @Volatile private var ppgMaxSamples = 1250L
     @Volatile private var wavePacketsSeen = 0
-    private var ppgCsvFile: java.io.File? = null
+    @Volatile private var nextPollAt = 0L
 
+    // ---- continuous PPG capture, written as rotating chunk files ----
+    private val chunkLock = Any()
+    private var ppgDir: java.io.File? = null
+    private var ppgPrefix = "PPG_Raw"
+    private var ppgChunkMs = 600_000L
+    private var chunkFile: java.io.File? = null      // the open "<name>.csv.part" file
+    private var chunkStartTs = 0L
+    private var chunkSampleIdx = 0L
+
+    // Asks the ring for one packet (~125 samples = 1 s) every second, on a fixed clock
     private val waveTask = object : Runnable {
         override fun run() {
             if (!wavePolling) return
             val model = connectedModel
-            if (model == null) { wavePolling = false; return }
-            BleServiceHelper.BleServiceHelper.oxyGetRtWave(model)
-            waveHandler.postDelayed(this, 1000L)
+            if (model == null) { stopPpgCapture(); return }
+            try {
+                BleServiceHelper.BleServiceHelper.oxyGetRtWave(model)
+            } catch (e: Exception) {
+                Log.w("ViatomPPG", "oxyGetRtWave failed", e)
+            }
+            nextPollAt += 1000L
+            val now = SystemClock.uptimeMillis()
+            if (nextPollAt < now) nextPollAt = now + 1000L   // we fell behind: do not fire a burst
+            waveHandler.postAtTime(this, nextPollAt)
         }
     }
 
+    private fun openChunkLocked(dir: java.io.File, ts: Long) {
+        val stamp = java.text.SimpleDateFormat("yyyyMMddHHmmss", java.util.Locale.US)
+            .format(java.util.Date(ts))
+        val part = java.io.File(dir, "${ppgPrefix}_$stamp.csv.part")
+        try {
+            part.writeText("timestamp_ms,sample_index,time_s,ppg_value\n")
+            chunkFile = part
+            chunkStartTs = ts
+            chunkSampleIdx = 0L
+        } catch (e: Exception) {
+            Log.w("ViatomPPG", "could not create chunk file", e)
+            chunkFile = null
+        }
+    }
+
+    // Finishes the open chunk (".csv.part" -> ".csv"). Call while holding chunkLock.
+    // Returns the payload for the "onPpgChunkReady" event, or null if nothing to report.
+    private fun closeChunkLocked(): Map<String, Any?>? {
+        val part = chunkFile ?: return null
+        chunkFile = null
+        val rows = chunkSampleIdx
+        chunkSampleIdx = 0L
+        if (rows == 0L) { part.delete(); return null }
+        val done = java.io.File(part.parentFile, part.name.removeSuffix(".part"))
+        return if (part.renameTo(done)) {
+            Log.d("ViatomPPG", "chunk ready ${done.name} rows=$rows")
+            mapOf(
+                "path" to done.absolutePath,
+                "name" to done.name,
+                "dir" to done.parent,
+                "rows" to rows.toInt(),
+                "startTs" to chunkStartTs.toDouble()
+            )
+        } else {
+            Log.w("ViatomPPG", "could not finalize ${part.name}")
+            null
+        }
+    }
+
+    // Stops polling and closes the current chunk. Does NOT stop the foreground service,
+    // so a history sync or a reconnect does not lose the "keep running" status.
     private fun stopPpgCapture() {
         wavePolling = false
         waveHandler.removeCallbacksAndMessages(null)
+        val ev = synchronized(chunkLock) { closeChunkLocked() }
+        if (ev != null) emitter?.emit("onPpgChunkReady", ev)
     }
+
+    private fun startKeepAlive() {
+        val ctx = appContext.reactContext ?: return
+        try {
+            ContextCompat.startForegroundService(
+                ctx, android.content.Intent(ctx, PpgKeepAliveService::class.java)
+            )
+        } catch (e: Exception) {
+            // e.g. Android 12+ refuses to start a foreground service while the app is in the background
+            Log.w("ViatomPPG", "could not start keep-alive service", e)
+        }
+    }
+
+    private fun stopKeepAlive() {
+        val ctx = appContext.reactContext ?: return
+        try {
+            ctx.stopService(android.content.Intent(ctx, PpgKeepAliveService::class.java))
+        } catch (e: Exception) {
+            Log.w("ViatomPPG", "could not stop keep-alive service", e)
+        }
+    }
+
     // Remember any scanned devices by MAC
     private val foundDevices = mutableMapOf<String, Bluetooth>()
 
@@ -80,7 +161,8 @@ class ViatomModule : Module() {
             "onPpgFile",         // { sampleInts, sampleRate, sampleTime, sn }
             "onReadProgress",    // { progress }
             "onError",            // { code, message }
-            "onWaveformReceived"
+            "onWaveformReceived",
+            "onPpgChunkReady"    // { path, name, dir, rows, startTs }
         )
 
         OnStartObserving { emitter = appContext.eventEmitter(this@ViatomModule) }
@@ -88,7 +170,7 @@ class ViatomModule : Module() {
             emitter = null
             clearObservers()
         }
-        OnDestroy { stopPpgCapture(); clearObservers() }
+        OnDestroy { stopPpgCapture(); stopKeepAlive(); clearObservers() }
 
         // ------------- BASIC FUNCTIONS EXPOSED TO JS -------------
 
@@ -151,6 +233,8 @@ class ViatomModule : Module() {
 
         // 6) Disconnect current device
         AsyncFunction("disconnect") {
+            stopPpgCapture()
+            stopKeepAlive()
             val model = connectedModel
             if (model != null) {
                 BleServiceHelper.BleServiceHelper.disconnect(model, false)
@@ -197,28 +281,53 @@ class ViatomModule : Module() {
             megaBp.terminateNative()
         }
 
-        AsyncFunction("startPpgCapture") { seconds: Int ->
+        // Starts continuous PPG capture. Chunk files are written to
+        // <app files>/ppg/<patientId>/<prefix>_<yyyyMMddHHmmss>.csv  (one every chunkSeconds).
+        // Returns the folder path.
+        AsyncFunction("startPpgCapture") { patientId: String, prefix: String, chunkSeconds: Int ->
             val model = connectedModel ?: throw CodedException("NO_DEVICE_CONNECTED")
-            val dir = appContext.reactContext?.getExternalFilesDir(null)
-                ?: throw CodedException("NO_STORAGE")
-            val stamp = java.text.SimpleDateFormat("yyyyMMddHHmmss", java.util.Locale.US)
-                .format(java.util.Date())
-            val file = java.io.File(dir, "PPG_wave_$stamp.csv")
-            file.writeText("timestamp_ms,sample_index,time_s,ppg_value\n")
+            val base = appContext.reactContext?.filesDir ?: throw CodedException("NO_STORAGE")
+            val safeId = patientId.replace(Regex("[^A-Za-z0-9+_ -]"), "_").ifBlank { "unknown" }
+            val dir = java.io.File(java.io.File(base, "ppg"), safeId)
+            dir.mkdirs()
 
-            ppgCsvFile = file
-            ppgSampleIndex = 0L
-            ppgMaxSamples = seconds.toLong() * 125L
+            stopPpgCapture()   // close any chunk that is still open
+
+            // finish chunks left behind by an earlier run that was killed mid-write
+            dir.listFiles()?.filter { it.name.endsWith(".csv.part") }?.forEach { p ->
+                if (p.length() > 100) {
+                    p.renameTo(java.io.File(dir, p.name.removeSuffix(".part")))
+                } else {
+                    p.delete()
+                }
+            }
+
+            synchronized(chunkLock) {
+                ppgDir = dir
+                ppgPrefix = prefix.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                ppgChunkMs = chunkSeconds.coerceAtLeast(30) * 1000L
+            }
+
             wavePacketsSeen = 0
             wavePolling = true
+            nextPollAt = SystemClock.uptimeMillis()
             waveHandler.removeCallbacksAndMessages(null)
             waveHandler.post(waveTask)
-            Log.d("ViatomPPG", "PPG capture started model=$model file=${file.absolutePath}")
-            file.absolutePath
+            startKeepAlive()
+            Log.d("ViatomPPG", "PPG capture started model=$model dir=${dir.absolutePath} chunk=${chunkSeconds}s")
+            dir.absolutePath
         }
 
+        // Stops polling and closes the open chunk (it is announced via onPpgChunkReady)
         AsyncFunction("stopPpgCapture") {
             stopPpgCapture()
+            true
+        }
+
+        // Also removes the foreground-service notification
+        AsyncFunction("stopPpgService") {
+            stopPpgCapture()
+            stopKeepAlive()
             true
         }
     }
@@ -350,6 +459,7 @@ class ViatomModule : Module() {
                 "onDisconnected",
                 mapOf("reason" to reason, "mac" to connectedMac, "model" to connectedModel)
             )
+            stopPpgCapture()   // close the open chunk; the service keeps running for the reconnect
             connectedModel = null
             connectedMac = null
         }
@@ -384,47 +494,50 @@ class ViatomModule : Module() {
                 )
             )
         }
-        // 9. Real-time waveform: one packet of ~125 samples (125 Hz)
+        // 9. Real-time waveform: one packet of ~125 samples (125 Hz) per request
         addObserver(InterfaceEvent.Oxy.EventOxyRtData, InterfaceEvent::class.java) { evt ->
             val rtWave = evt.data as? RtWave ?: return@addObserver
             val wFs = rtWave.wFs ?: return@addObserver
             if (wFs.isEmpty()) return@addObserver
+            if (!wavePolling) return@addObserver
 
             // The first packet after starting is stale buffer data, so skip it
-            if (wavePolling && wavePacketsSeen++ == 0) {
+            if (wavePacketsSeen++ == 0) {
                 Log.d("ViatomPPG", "skipping first (stale) packet")
                 return@addObserver
             }
 
             val ts = System.currentTimeMillis()
-            val file = ppgCsvFile
+            var ready: Map<String, Any?>? = null
 
-            if (wavePolling && file != null) {
-                val csv = StringBuilder()
-                for (sample in wFs) {
-                    if (ppgSampleIndex >= ppgMaxSamples) break
-                    val timeS = String.format(java.util.Locale.US, "%.3f", ppgSampleIndex / 125.0)
-                    csv.append(ts).append(',').append(ppgSampleIndex).append(',')
-                        .append(timeS).append(',').append(sample).append('\n')
-                    ppgSampleIndex++
+            synchronized(chunkLock) {
+                val dir = ppgDir
+                if (dir != null) {
+                    if (chunkFile == null) openChunkLocked(dir, ts)
+                    val f = chunkFile
+                    if (f != null) {
+                        val sb = StringBuilder()
+                        for (sample in wFs) {
+                            val timeS = String.format(java.util.Locale.US, "%.3f", chunkSampleIdx / 125.0)
+                            sb.append(ts).append(',').append(chunkSampleIdx).append(',')
+                                .append(timeS).append(',').append(sample).append('\n')
+                            chunkSampleIdx++
+                        }
+                        try { f.appendText(sb.toString()) }
+                        catch (e: Exception) { Log.w("ViatomPPG", "CSV write failed", e) }
+
+                        // chunk is full: finish it; the next packet opens the next chunk with no gap
+                        if (ts - chunkStartTs >= ppgChunkMs) ready = closeChunkLocked()
+                    }
                 }
-                try { file.appendText(csv.toString()) }
-                catch (e: Exception) { Log.w("ViatomPPG", "CSV write failed", e) }
-
-                Log.d("ViatomPPG", "PPG saved $ppgSampleIndex/$ppgMaxSamples spo2=${rtWave.spo2} pr=${rtWave.pr}")
-
-                if (ppgSampleIndex >= ppgMaxSamples) {
-                    stopPpgCapture()
-                    Log.d("ViatomPPG", "PPG capture complete: ${file.absolutePath}")
-                }
-
-                // keep SpO2/PR updating while wave polling replaces param polling
-                emitter?.emit("onRealtime", mapOf(
-                    "spo2" to rtWave.spo2, "pr" to rtWave.pr,
-                    "pi" to rtWave.pi, "motion" to 0, "ts" to ts))
             }
 
-            emitter?.emit("onWaveformReceived", mapOf("wFs" to wFs.toList(), "ts" to ts))
+            // keep SpO2/PR updating while wave polling replaces param polling
+            emitter?.emit("onRealtime", mapOf(
+                "spo2" to rtWave.spo2, "pr" to rtWave.pr,
+                "pi" to rtWave.pi, "motion" to 0, "ts" to ts))
+
+            ready?.let { emitter?.emit("onPpgChunkReady", it) }
         }
     }
 
