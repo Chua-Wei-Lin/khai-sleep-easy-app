@@ -3,12 +3,6 @@ import Viatom from './Viatom'; // Import Expo module wrapper
 
 export * from "./Viatom";
 
-export const startPpgCapture = (seconds: number): Promise<string> =>
-  (Viatom as any).startPpgCapture(seconds);
-
-export const stopPpgCapture = (): Promise<boolean> =>
-  (Viatom as any).stopPpgCapture();
-
 export function useO2RingBpStream() {
   useEffect(() => {
     // 1. Initialize native C memory buffers

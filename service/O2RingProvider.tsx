@@ -1267,7 +1267,7 @@ const processReadQueue = useCallback(() => {
     // ---- Overnight PPG: native code records chunks; JS uploads them ----
       const ppgDirRef = useRef<string | null>(null);
       const ppgFlushing = useRef(false);
-      const PPG_CHUNK_SECONDS = 60;
+      const PPG_CHUNK_SECONDS = 600;
       const flushPpgChunks = useCallback(async () => {
         const dirPath = ppgDirRef.current;
         const patientId = patientIdRef.current;
