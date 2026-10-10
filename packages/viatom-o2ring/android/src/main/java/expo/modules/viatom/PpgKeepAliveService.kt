@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -20,6 +21,7 @@ import androidx.core.app.NotificationCompat
 class PpgKeepAliveService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -41,13 +43,31 @@ class PpgKeepAliveService : Service() {
             }
         }
 
+        // Ask Android not to let the Wi-Fi radio sleep while recording (uploads happen over Wi-Fi)
+        if (wifiLock == null) {
+            try {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                @Suppress("DEPRECATION")
+                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "sleepeasy:ppg-wifi").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            } catch (e: Exception) {
+                PpgEventLog.log(this, "wifi lock failed: ${e.message}")
+            }
+        }
+        PpgEventLog.log(this, "keep-alive service running (wake lock held=${wakeLock?.isHeld}, wifi lock held=${wifiLock?.isHeld})")
+
         // If Android kills the process, do not come back as an empty service holding a wake lock
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        PpgEventLog.log(this, "keep-alive service stopped")
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
+        wifiLock?.let { if (it.isHeld) it.release() }
+        wifiLock = null
         super.onDestroy()
     }
 

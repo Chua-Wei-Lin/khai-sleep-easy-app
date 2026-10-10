@@ -122,7 +122,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const isDownloadingHistoryRef = React.useRef(false);
   const totalFilesToDownload = React.useRef(0);
   const downloadedFiles = React.useRef(0);
-  const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
+  const rawBase = API_DEV || "http://192.168.68.82/SleepEasy/ApiBackend";
   const baseURL = rawBase?.replace(/\/+$/, "");
 
   console.log("====================================");
@@ -1283,8 +1283,10 @@ const processReadQueue = useCallback(() => {
               await uploadCsv({ patientId, item: { id: f.name, uri: f.uri }, baseURL });
               f.delete();
               console.log("[PPG Chunk] uploaded and removed", f.name);
+              O2Ring.logEvent(`uploaded ${f.name}`);
             } catch (err) {
               console.warn("[PPG Chunk] upload failed, will retry:", f.name, err);
+              O2Ring.logEvent(`upload failed ${f.name}: ${String(err)}`);
               break; // network is probably down; try again later
             }
           }
@@ -1302,7 +1304,7 @@ const processReadQueue = useCallback(() => {
           if (e.dir) ppgDirRef.current = e.dir;
           flushPpgChunks();
         });
-        const timer = setInterval(() => flushPpgChunks(), 5 * 60 * 1000);
+        const timer = setInterval(() => { O2Ring.logEvent("js tick"); flushPpgChunks(); }, 5 * 60 * 1000);
         return () => { sub.remove(); clearInterval(timer); };
       }, [flushPpgChunks]);
 

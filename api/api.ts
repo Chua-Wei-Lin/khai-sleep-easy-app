@@ -2,7 +2,7 @@ import axios from "axios";
 import { API_DEV, API_PROD, API_USERNAME, API_PASSWORD } from "@env";
 
 // Force local LAN IP for local APK testing
-const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
+const rawBase = API_DEV || "http://192.168.68.82/SleepEasy/ApiBackend";
 const baseURL = rawBase?.replace(/\/+$/, "");
 
 console.log("====================================");

@@ -41,6 +41,7 @@ class ViatomModule : Module() {
     @Volatile private var wavePolling = false
     @Volatile private var wavePacketsSeen = 0
     @Volatile private var nextPollAt = 0L
+    @Volatile private var pollCount = 0L
 
     // ---- continuous PPG capture, written as rotating chunk files ----
     private val chunkLock = Any()
@@ -60,8 +61,10 @@ class ViatomModule : Module() {
             try {
                 BleServiceHelper.BleServiceHelper.oxyGetRtWave(model)
             } catch (e: Exception) {
-                Log.w("ViatomPPG", "oxyGetRtWave failed", e)
+                ev("oxyGetRtWave failed: ${e.message}")
             }
+            pollCount++
+            if (pollCount % 300L == 0L) ev("heartbeat: polls=$pollCount")   // every ~5 minutes
             nextPollAt += 1000L
             val now = SystemClock.uptimeMillis()
             if (nextPollAt < now) nextPollAt = now + 1000L   // we fell behind: do not fire a burst
@@ -94,7 +97,7 @@ class ViatomModule : Module() {
         if (rows == 0L) { part.delete(); return null }
         val done = java.io.File(part.parentFile, part.name.removeSuffix(".part"))
         return if (part.renameTo(done)) {
-            Log.d("ViatomPPG", "chunk ready ${done.name} rows=$rows")
+            ev("chunk ready ${done.name} rows=$rows")
             mapOf(
                 "path" to done.absolutePath,
                 "name" to done.name,
@@ -111,6 +114,7 @@ class ViatomModule : Module() {
     // Stops polling and closes the current chunk. Does NOT stop the foreground service,
     // so a history sync or a reconnect does not lose the "keep running" status.
     private fun stopPpgCapture() {
+        if (wavePolling) ev("capture stopping")
         wavePolling = false
         waveHandler.removeCallbacksAndMessages(null)
         val ev = synchronized(chunkLock) { closeChunkLocked() }
@@ -123,9 +127,10 @@ class ViatomModule : Module() {
             ContextCompat.startForegroundService(
                 ctx, android.content.Intent(ctx, PpgKeepAliveService::class.java)
             )
+            ev("keep-alive service start requested")
         } catch (e: Exception) {
             // e.g. Android 12+ refuses to start a foreground service while the app is in the background
-            Log.w("ViatomPPG", "could not start keep-alive service", e)
+            ev("could not start keep-alive service: ${e.message}")
         }
     }
 
@@ -136,6 +141,12 @@ class ViatomModule : Module() {
         } catch (e: Exception) {
             Log.w("ViatomPPG", "could not stop keep-alive service", e)
         }
+    }
+
+    // Writes to logcat AND to <external app files>/ppg_events.log (readable with adb pull, even on release builds)
+    private fun ev(msg: String) {
+        Log.d("ViatomPPG", msg)
+        PpgEventLog.log(appContext.reactContext, msg)
     }
 
     // Remember any scanned devices by MAC
@@ -170,7 +181,7 @@ class ViatomModule : Module() {
             emitter = null
             clearObservers()
         }
-        OnDestroy { stopPpgCapture(); stopKeepAlive(); clearObservers() }
+        OnDestroy { ev("module destroyed"); stopPpgCapture(); stopKeepAlive(); clearObservers() }
 
         // ------------- BASIC FUNCTIONS EXPOSED TO JS -------------
 
@@ -224,6 +235,7 @@ class ViatomModule : Module() {
 
             BleServiceHelper.BleServiceHelper.setInterfaces(bt.model)
             BleServiceHelper.BleServiceHelper.connect(act.applicationContext, bt.model, bt.device)
+            ev("connect() mac=$mac model=${bt.model}")
 
             connectedModel = bt.model
             connectedMac = mac
@@ -309,18 +321,25 @@ class ViatomModule : Module() {
             }
 
             wavePacketsSeen = 0
+            pollCount = 0L
             wavePolling = true
             nextPollAt = SystemClock.uptimeMillis()
             waveHandler.removeCallbacksAndMessages(null)
             waveHandler.post(waveTask)
             startKeepAlive()
-            Log.d("ViatomPPG", "PPG capture started model=$model dir=${dir.absolutePath} chunk=${chunkSeconds}s")
+            ev("capture started model=$model chunk=${chunkSeconds}s dir=${dir.absolutePath}")
             dir.absolutePath
         }
 
         // Stops polling and closes the open chunk (it is announced via onPpgChunkReady)
         AsyncFunction("stopPpgCapture") {
             stopPpgCapture()
+            true
+        }
+
+        // Lets the JavaScript side write into the same event log
+        AsyncFunction("logEvent") { message: String ->
+            ev("JS: $message")
             true
         }
 
@@ -459,6 +478,7 @@ class ViatomModule : Module() {
                 "onDisconnected",
                 mapOf("reason" to reason, "mac" to connectedMac, "model" to connectedModel)
             )
+            ev("ring disconnected reason=$reason")
             stopPpgCapture()   // close the open chunk; the service keeps running for the reconnect
             connectedModel = null
             connectedMac = null
@@ -508,6 +528,7 @@ class ViatomModule : Module() {
             }
 
             val ts = System.currentTimeMillis()
+            if (wFs.size != 125) ev("short packet: ${wFs.size} samples")
             var ready: Map<String, Any?>? = null
 
             synchronized(chunkLock) {

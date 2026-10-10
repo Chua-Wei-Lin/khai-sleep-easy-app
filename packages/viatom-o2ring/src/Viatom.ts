@@ -211,3 +211,11 @@ export function stopPpgService() {
 export function addPpgChunkReadyListener(listener: (e: PpgChunkReadyEvent) => void) {
   return (emitter.addListener as any)("onPpgChunkReady", listener);
 }
+
+export function logEvent(message: string) {
+  try {
+    return Promise.resolve(Native.logEvent(message)).catch(() => false);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
