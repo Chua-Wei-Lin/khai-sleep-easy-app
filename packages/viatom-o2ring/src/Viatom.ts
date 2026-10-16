@@ -18,6 +18,9 @@ type NativeViatomModule = {
   startPpgCapture(patientId: string, prefix: string, chunkSeconds: number): Promise<string>;
   stopPpgCapture(): Promise<boolean>;
   stopPpgService(): Promise<boolean>;
+  logEvent(message: string): Promise<boolean>;
+  configurePpgUpload(uploadUrl: string, authHeader: string, patientId: string): Promise<boolean>;
+  setLiveWave(enabled: boolean): Promise<boolean>;
 };
 
 const Native: NativeViatomModule = requireNativeModule("Viatom");
@@ -164,6 +167,12 @@ export function addRtPpgListener(listener: (e: RtPpgEvent) => void) {
   return (emitter.addListener as any)("onRtPpg", listener);
 }
 
+export function addWaveformReceivedListener(
+  listener: (e: { wFs: number[]; ts: number }) => void
+) {
+  return (emitter.addListener as any)("onWaveformReceived", listener);
+}
+
 export function addInfoListener(listener: (e: InfoEvent) => void) {
   return (emitter.addListener as any)("onInfo", listener);
 }
@@ -218,4 +227,27 @@ export function logEvent(message: string) {
   } catch {
     return Promise.resolve(false);
   }
+}
+
+export function configurePpgUpload(uploadUrl: string, authHeader: string, patientId: string) {
+  try {
+    return Promise.resolve(Native.configurePpgUpload(uploadUrl, authHeader, patientId)).catch(() => false);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+export type PpgPacketEvent = { samples: number[]; ts: number };
+
+// The live screen turns this on while it is open (the module sends samples to JavaScript only then)
+export function setLiveWave(enabled: boolean) {
+  try {
+    return Promise.resolve(Native.setLiveWave(enabled)).catch(() => false);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+export function addPpgPacketListener(listener: (e: PpgPacketEvent) => void) {
+  return (emitter.addListener as any)("onPpgPacket", listener);
 }

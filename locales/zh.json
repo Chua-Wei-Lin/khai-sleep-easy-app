@@ -29,6 +29,10 @@
   "noDevices": "暂无设备",
   "scan": "扫描",
   "scanning": "正在扫描",
+  "oxygenLevel": "血氧",
+  "avg": "平均",
+  "ppgSignal": "PPG 信号",
+  "waitingForSignal": "等待信号…",
 
   "--comment-settings--": "设置菜单",
   "profile": "用户",

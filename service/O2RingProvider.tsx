@@ -14,7 +14,7 @@ import { ensureDir, uploadPendingCsvs, uploadCsv, UploadItem } from "./History";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, NativeModules, PermissionsAndroid } from "react-native";
 import { API_DEV, API_PROD } from "@env";
-import { uploadRawPpgPayload } from "../api/api";
+import { uploadRawPpgPayload, authHeader } from "../api/api";
 import { requireOptionalNativeModule } from "expo-modules-core";
 
 const isNativeModuleAvailable = (): boolean => {
@@ -122,13 +122,9 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const isDownloadingHistoryRef = React.useRef(false);
   const totalFilesToDownload = React.useRef(0);
   const downloadedFiles = React.useRef(0);
-  const rawBase = API_DEV || "http://192.168.68.82/SleepEasy/ApiBackend";
+  const nativeUploadRef = useRef(false);
+  const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
   const baseURL = rawBase?.replace(/\/+$/, "");
-
-  console.log("====================================");
-  console.log("Resolved Base URL:", baseURL);
-  console.log("Is DEV mode?", __DEV__);
-  console.log("====================================");
 
   // -------------------
   // MARK: Patient ID
@@ -1269,6 +1265,7 @@ const processReadQueue = useCallback(() => {
       const ppgFlushing = useRef(false);
       const PPG_CHUNK_SECONDS = 600;
       const flushPpgChunks = useCallback(async () => {
+        if (nativeUploadRef.current) return;
         const dirPath = ppgDirRef.current;
         const patientId = patientIdRef.current;
         if (!dirPath || !patientId || !baseURL || ppgFlushing.current) return;
@@ -1322,6 +1319,11 @@ const processReadQueue = useCallback(() => {
             if (cancelled) return;
             if (!patientId) { console.warn("[PPG] no patient id yet, not starting"); return; }
             const last4 = String((connectedDevice as any)?.name ?? "device").slice(-4).replace(/\W/g, "");
+            nativeUploadRef.current = (await O2Ring.configurePpgUpload(
+              `${baseURL}/staff/o2ring-data/upload.php`,
+              authHeader ?? "",
+              patientId
+            )) === true;
             const dir = await O2Ring.startPpgCapture(patientId, `PPG_Raw_${last4}`, PPG_CHUNK_SECONDS);
             if (cancelled) { O2Ring.stopPpgCapture().catch(() => {}); return; }
             ppgDirRef.current = dir;
@@ -1336,9 +1338,17 @@ const processReadQueue = useCallback(() => {
         return () => {
           cancelled = true;
           clearTimeout(t);
-          O2Ring.stopPpgCapture().catch(() => {}); // closes the open chunk; the listener above uploads it
+          // O2Ring.stopPpgCapture().catch(() => {}); // closes the open chunk; the listener above uploads it
         };
       }, [connectedDevice, isDownloadingHistory, flushPpgChunks]);
+
+      // Pause recording while the ring's history downloads. Runs only when this flag changes,
+      // not when the screen closes, so swiping the app away does not stop recording.
+      useEffect(() => {
+        if (isDownloadingHistory) {
+          O2Ring.stopPpgCapture().catch(() => {});
+        }
+      }, [isDownloadingHistory]);
 
   const value = useMemo(
     () => ({

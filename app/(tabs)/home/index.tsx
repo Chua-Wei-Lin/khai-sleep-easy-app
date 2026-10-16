@@ -15,6 +15,7 @@ import {
   View,
   Image,
   Alert,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as NavigationBar from "expo-navigation-bar";
@@ -23,6 +24,34 @@ import { useTheme } from "../../../theme/ThemeProvider";
 import { useTranslation } from "react-i18next";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { DeviceItem, useO2Ring } from "../../../service/O2RingProvider";
+import LivePpgWave from "../../../components/live/LivePpgWave";
+import LiveTrendChart, { Band } from "../../../components/live/LiveTrendChart";
+import { useReadingSeries } from "../../../components/live/useReadingSeries";
+
+// same validity rules as the big numbers: anything else shows "--" and leaves a gap in the chart
+const isValidSpo2 = (v: number) => v >= 20 && v <= 100;
+const isValidPr = (v: number) => v >= 20 && v <= 250;
+
+// line colour by value (cosmetic only; agree the thresholds with the clinical lead)
+const GREEN = "#5BD68A";
+const YELLOW = "#E3D45C";
+const ORANGE = "#F5A25D";
+const AMBER = "#F5B031";
+const SPO2_BANDS: Band[] = [
+  { value: 100, color: GREEN },
+  { value: 94, color: GREEN },
+  { value: 90, color: YELLOW },
+  { value: 86, color: ORANGE },
+  { value: 70, color: ORANGE },
+];
+const PR_BANDS: Band[] = [
+  { value: 250, color: ORANGE },
+  { value: 130, color: ORANGE },
+  { value: 110, color: GREEN },
+  { value: 50, color: GREEN },
+  { value: 40, color: ORANGE },
+  { value: 25, color: ORANGE },
+];
 
 export default function Home() {
   const { colors: C, isDark, fonts: F } = useTheme();
@@ -33,6 +62,7 @@ export default function Home() {
     knownDevices,
     spo2,
     pr,
+    realtimeUpdatedAt,
     battery,
     batteryState,
     disconnect,
@@ -173,6 +203,10 @@ export default function Home() {
     spo2 == null || spo2 < 20 || spo2 > 100 ? "--" : `${spo2}`;
 
   const displayPr = pr == null || pr < 20 || pr > 250 ? "--" : `${pr}`;
+
+  // rolling history for the charts; a new connection starts a new chart
+  const spo2Series = useReadingSeries(spo2, realtimeUpdatedAt, isValidSpo2, connectedDevice?.mac);
+  const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac);
   const batterySegments = useMemo(() => {
     if (battery == null || battery < 0 || battery > 100) {
       return null;
@@ -342,7 +376,7 @@ export default function Home() {
 
       {connectedDevice ? (
         // Connected view
-        <View>
+        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
           <View style={styles.titleContainer}>
             <View style={styles.titleRow}>
               <View style={styles.titleLeft}>
@@ -424,21 +458,37 @@ export default function Home() {
 
           {/* Live Display */}
           <View style={{ paddingHorizontal: 16 }}>
-            <View style={[styles.card, { backgroundColor: C.bg2 }]}>
-              <Text style={[styles.label, { color: C.text }]}>SpO2</Text>
-              <Text style={[styles.value, { color: C.tint }]}>
-                {displaySpo2} %
-              </Text>
-            </View>
+            <LivePpgWave
+              active={isRealtimeReady}
+              title={t("ppgSignal")}
+              waitingText={t("waitingForSignal")}
+            />
 
-            <View style={[styles.card, { backgroundColor: C.bg2 }]}>
-              <Text style={[styles.label, { color: C.text }]}>
-                {t("pulseRate")}
-              </Text>
-              <Text style={[styles.value, { color: C.tint }]}>
-                {displayPr} bpm
-              </Text>
-            </View>
+            <LiveTrendChart
+              title={t("oxygenLevel")}
+              unit="%"
+              currentLabel={displaySpo2}
+              avgLabel={t("avg")}
+              points={spo2Series}
+              min={70}
+              max={100}
+              ticks={[100, 90, 80, 70]}
+              bands={SPO2_BANDS}
+              accent={C.tint}
+            />
+
+            <LiveTrendChart
+              title={t("pulseRate")}
+              unit="bpm"
+              currentLabel={displayPr}
+              avgLabel={t("avg")}
+              points={prSeries}
+              min={25}
+              max={250}
+              ticks={[250, 125, 25]}
+              bands={PR_BANDS}
+              accent={AMBER}
+            />
 
             <TouchableOpacity
               onPress={handleDisconnect}
@@ -447,7 +497,7 @@ export default function Home() {
               <Text style={[F.buttonText]}>{t("disconnect")}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       ) : (
         // Not connected view
         <View style={styles.centerTop}>

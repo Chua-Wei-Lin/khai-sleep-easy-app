@@ -42,6 +42,11 @@ class ViatomModule : Module() {
     @Volatile private var wavePacketsSeen = 0
     @Volatile private var nextPollAt = 0L
     @Volatile private var pollCount = 0L
+    @Volatile private var liveWave = false   // the live screen turns this on while it is open
+
+    // Sends finished chunk files to the server from its own thread (does not depend on JavaScript)
+    private val uploader = PpgUploader(log = { msg -> ev("upload: $msg") })
+    @Volatile private var uploadConfig: PpgUploader.Config? = null
 
     // ---- continuous PPG capture, written as rotating chunk files ----
     private val chunkLock = Any()
@@ -98,6 +103,7 @@ class ViatomModule : Module() {
         val done = java.io.File(part.parentFile, part.name.removeSuffix(".part"))
         return if (part.renameTo(done)) {
             ev("chunk ready ${done.name} rows=$rows")
+            uploader.poke()
             mapOf(
                 "path" to done.absolutePath,
                 "name" to done.name,
@@ -119,6 +125,23 @@ class ViatomModule : Module() {
         waveHandler.removeCallbacksAndMessages(null)
         val ev = synchronized(chunkLock) { closeChunkLocked() }
         if (ev != null) emitter?.emit("onPpgChunkReady", ev)
+        scheduleIdleStop()
+    }
+
+    // If nothing starts recording again within 15 minutes and no file is waiting to upload,
+    // release the wake lock and remove the notification instead of holding them for hours.
+    private fun scheduleIdleStop() {
+        waveHandler.postDelayed({
+            if (wavePolling) return@postDelayed
+            val waiting = ppgDir?.listFiles { f -> f.isFile && f.name.startsWith("PPG_Raw") && f.name.endsWith(".csv") }
+                ?.isNotEmpty() == true
+            if (waiting) {
+                scheduleIdleStop()
+            } else {
+                ev("idle for 15 minutes: stopping keep-alive service")
+                stopKeepAlive()
+            }
+        }, 15 * 60 * 1000L)
     }
 
     private fun startKeepAlive() {
@@ -173,15 +196,18 @@ class ViatomModule : Module() {
             "onReadProgress",    // { progress }
             "onError",            // { code, message }
             "onWaveformReceived",
-            "onPpgChunkReady"    // { path, name, dir, rows, startTs }
+            "onPpgChunkReady",   // { path, name, dir, rows, startTs }
+            "onPpgPacket"        // { samples, ts }  only while the live screen is open
         )
 
         OnStartObserving { emitter = appContext.eventEmitter(this@ViatomModule) }
         OnStopObserving {
             emitter = null
-            clearObservers()
+            // Closing the screen (swiping the app away) removes every JavaScript listener.
+            // Recording must go on, so keep the Bluetooth observers while a capture is running.
+            if (!wavePolling) clearObservers()
         }
-        OnDestroy { ev("module destroyed"); stopPpgCapture(); stopKeepAlive(); clearObservers() }
+        OnDestroy { ev("module destroyed"); stopPpgCapture(); uploader.stop(); stopKeepAlive(); clearObservers() }
 
         // ------------- BASIC FUNCTIONS EXPOSED TO JS -------------
 
@@ -303,6 +329,14 @@ class ViatomModule : Module() {
             val dir = java.io.File(java.io.File(base, "ppg"), safeId)
             dir.mkdirs()
 
+            val cleanPrefix = prefix.replace(Regex("[^A-Za-z0-9_-]"), "_")
+            if (wavePolling && ppgDir == dir && ppgPrefix == cleanPrefix) {
+                // already recording for this patient (for example the app was reopened): keep the chunk going
+                uploadConfig?.let { uploader.configure(it); uploader.start(dir) }
+                ev("capture already running, keeping it")
+                return@AsyncFunction dir.absolutePath
+            }
+
             stopPpgCapture()   // close any chunk that is still open
 
             // finish chunks left behind by an earlier run that was killed mid-write
@@ -313,6 +347,8 @@ class ViatomModule : Module() {
                     p.delete()
                 }
             }
+
+            uploadConfig?.let { uploader.configure(it); uploader.start(dir) }
 
             synchronized(chunkLock) {
                 ppgDir = dir
@@ -334,6 +370,21 @@ class ViatomModule : Module() {
         // Stops polling and closes the open chunk (it is announced via onPpgChunkReady)
         AsyncFunction("stopPpgCapture") {
             stopPpgCapture()
+            true
+        }
+
+        // JavaScript gives the native uploader the server address and login once, before recording starts
+        AsyncFunction("configurePpgUpload") { uploadUrl: String, authHeader: String, patientId: String ->
+            val cfg = PpgUploader.Config(uploadUrl, authHeader.ifBlank { null }, patientId)
+            uploadConfig = cfg
+            uploader.configure(cfg)
+            ev("upload configured: $uploadUrl")
+            true
+        }
+
+        // The live screen switches this on while it is open: samples are sent to JavaScript only then
+        AsyncFunction("setLiveWave") { enabled: Boolean ->
+            liveWave = enabled
             true
         }
 
@@ -557,6 +608,10 @@ class ViatomModule : Module() {
             emitter?.emit("onRealtime", mapOf(
                 "spo2" to rtWave.spo2, "pr" to rtWave.pr,
                 "pi" to rtWave.pi, "motion" to 0, "ts" to ts))
+
+            if (liveWave) {
+                emitter?.emit("onPpgPacket", mapOf("samples" to wFs.toList(), "ts" to ts))
+            }
 
             ready?.let { emitter?.emit("onPpgChunkReady", it) }
         }

@@ -29,6 +29,10 @@
   "noDevices": "No devices",
   "scan": "Scan",
   "scanning": "Scanning",
+  "oxygenLevel": "Oxygen Level",
+  "avg": "Avg.",
+  "ppgSignal": "PPG Signal",
+  "waitingForSignal": "Waiting for signal…",
 
   "--comment-settings--": "Settings Page",
   "profile": "Profile",
@@ -84,5 +88,5 @@
   "pulseRate": "Pulse Rate",
 
   "--errors--": "Errors",
-  "error": "Error"
+  "error": "Error",
 }
