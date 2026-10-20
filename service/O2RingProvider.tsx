@@ -50,6 +50,10 @@ type O2RingContextValue = {
   knownDevices: DeviceItem[];
   spo2: number | null;
   pr: number | null;
+  sbp: number | null;
+  dbp: number | null;
+  pi: number | null;
+  motion: number | null;
   realtimeUpdatedAt: number | null;
   isDownloadingHistory: boolean;
   downloadProgress: number;
@@ -91,6 +95,10 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const [batteryState, setBatteryState] = useState<number | null>(null);
   const [spo2, setSpo2] = useState<number | null>(null);
   const [pr, setPr] = useState<number | null>(null);
+  const [sbp, setSbp] = useState<number | null>(null);
+  const [dbp, setDbp] = useState<number | null>(null);
+  const [pi, setPi] = useState<number | null>(null);
+  const [motion, setMotion] = useState<number | null>(null);
   const [realtimeUpdatedAt, setRealtimeUpdatedAt] = useState<number | null>(
     null
   );
@@ -477,8 +485,6 @@ const processReadQueue = useCallback(() => {
 
 
   useEffect(() => {
-    if (Platform.OS !== "ios") return;
-
     const sub = O2Ring.addServiceReadyListener(() => {
       serviceReadyRef.current = true;
       setServiceReady(true);
@@ -499,10 +505,8 @@ const processReadQueue = useCallback(() => {
   }, [startRealtimeStream, syncPatientId]);
 
   useEffect(() => {
-    if (Platform.OS === "ios") {
-      if (connectedDevice && serviceReady) {
-        startRealtimeStream();
-      }
+    if (connectedDevice && serviceReady) {
+      startRealtimeStream();
     }
   }, [connectedDevice, serviceReady, startRealtimeStream]);
 
@@ -569,6 +573,7 @@ const processReadQueue = useCallback(() => {
     let subInfo: Subscription | null = null;
     let subProgress: Subscription | null = null;
     let subFile: Subscription | null = null;
+    let subWave: Subscription | null = null;
 
     const setup = async () => {
       try {
@@ -585,6 +590,8 @@ const processReadQueue = useCallback(() => {
       subRt = O2Ring.addRealtimeListener((rt) => {
         setSpo2(rt.spo2);
         setPr(rt.pr);
+        setPi(rt.pi ?? null);
+        setMotion(rt.motion ?? null);
         setRealtimeUpdatedAt(Date.now());
         if (Platform.OS === "ios") {
           setIosRealtimeReady((prev) => (prev ? prev : true));
@@ -602,6 +609,13 @@ const processReadQueue = useCallback(() => {
           if (ppgBufferRef.current.ir.length % 150 === 0) {
             console.log(`[PPG Stream Active] Captured ${ppgBufferRef.current.ir.length} raw IR points`);
           }
+        }
+      });
+
+      subWave = O2Ring.addBloodPressureListener((bp) => {
+        if (bp?.sbp != null && bp?.dbp != null) {
+          setSbp(bp.sbp);
+          setDbp(bp.dbp);
         }
       });
 
@@ -715,6 +729,8 @@ const processReadQueue = useCallback(() => {
         setConnectedDevice(null);
         setSpo2(null);
         setPr(null);
+        setSbp(null);
+        setDbp(null);
         setBattery(null);
         setBatteryState(null);
         setRealtimeUpdatedAt(null);
@@ -893,6 +909,7 @@ const processReadQueue = useCallback(() => {
       subRt?.remove();
       subRtPpg?.remove();
       subPpgFile?.remove();
+      subWave?.remove();
       subErr?.remove();
       subDev?.remove();
       subDisc?.remove();
@@ -923,6 +940,8 @@ const processReadQueue = useCallback(() => {
     setDevices([]);
     setIsScanning(true);
     try {
+      await O2Ring.stopScan().catch(() => {});
+      await new Promise((r) => setTimeout(r, 1500));
       await O2Ring.scan();
       return true;
     } catch (e) {
@@ -1047,6 +1066,9 @@ const processReadQueue = useCallback(() => {
     }
     // Disable auto-reconnect after an explicit user disconnect.
     autoReconnectEnabled.current = false;
+    AsyncStorage.removeItem(HISTORY_DEVICE_KEY).catch(() => {});
+    AsyncStorage.removeItem(LEGACY_HISTORY_DEVICE_KEY).catch(() => {});
+    setKnownDevices([]);
     if (infoRetryTimer.current) {
       clearInterval(infoRetryTimer.current);
       infoRetryTimer.current = null;
@@ -1062,6 +1084,8 @@ const processReadQueue = useCallback(() => {
     setConnectedDevice(null);
     setSpo2(null);
     setPr(null);
+    setSbp(null);
+    setDbp(null);
     setRealtimeUpdatedAt(null);
     setIsDownloadingHistory(false);
     setDownloadProgress(0);
@@ -1366,6 +1390,10 @@ const processReadQueue = useCallback(() => {
       knownDevices,
       spo2,
       pr,
+      sbp,
+      dbp,
+      pi,
+      motion,
       realtimeUpdatedAt,
       isDownloadingHistory,
       downloadProgress,
@@ -1398,6 +1426,10 @@ const processReadQueue = useCallback(() => {
       knownDevices,
       spo2,
       pr,
+      sbp,
+      dbp,
+      pi,
+      motion,
       realtimeUpdatedAt,
       isDownloadingHistory,
       downloadProgress,

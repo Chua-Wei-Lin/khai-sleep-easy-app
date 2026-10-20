@@ -27,11 +27,11 @@ export default function WelcomeBack() {
 
         // Give users a quick splash of the welcome state before entering the app
         redirectTimer = setTimeout(() => {
-          router.replace("/(tabs)/history");
+          router.replace("/(tabs)/home");
         }, 1500);
       } catch (error) {
         console.error("Error@WelcomeBack:", error);
-        router.replace("/(tabs)/history");
+        router.replace("/(tabs)/home");
       }
     };
 

@@ -6,7 +6,6 @@ import Svg, {
   LinearGradient,
   Path,
   Stop,
-  Text as SvgText,
 } from "react-native-svg";
 import { useTheme } from "../../theme/ThemeProvider";
 import type { SeriesPoint } from "./useReadingSeries";
@@ -45,7 +44,7 @@ export default function LiveTrendChart({
   ticks,
   bands,
   accent,
-  height = 140,
+  height = 28,
 }: Props) {
   const { colors: C } = useTheme();
   const [width, setWidth] = useState(0);
@@ -53,14 +52,6 @@ export default function LiveTrendChart({
 
   const onLayout = (e: LayoutChangeEvent) =>
     setWidth(Math.round(e.nativeEvent.layout.width));
-
-  const avg = useMemo(
-    () =>
-      points.length > 0
-        ? Math.round(points.reduce((s, p) => s + p.v, 0) / points.length)
-        : null,
-    [points]
-  );
 
   const { path, t0, tN } = useMemo(() => {
     if (!width || points.length === 0) return { path: "", t0: 0, tN: 0 };
@@ -72,6 +63,7 @@ export default function LiveTrendChart({
     const gapMs = Math.max(5000, step * 2000); // a longer pause breaks the line
     let d = "";
     let prevT = -Infinity;
+
     for (let i = 0; i < points.length; i += step) {
       const end = Math.min(points.length, i + step);
       let sum = 0;
@@ -80,10 +72,13 @@ export default function LiveTrendChart({
       const t = points[Math.floor((i + end - 1) / 2)].t;
       const x = ((t - first) / span) * width;
       const y = ((max - v) / (max - min)) * height;
-      d +=
-        d === "" || t - prevT > gapMs
-          ? `M${x.toFixed(1)} ${y.toFixed(1)}`
-          : ` L${x.toFixed(1)} ${y.toFixed(1)}`;
+      if (d === "") {
+        d += `M${x.toFixed(1)} ${y.toFixed(1)}`;
+      } else if (t - prevT > gapMs) {
+        d += ` M${x.toFixed(1)} ${y.toFixed(1)}`;
+      } else {
+        d += ` L${x.toFixed(1)} ${y.toFixed(1)}`;
+      }
       prevT = t;
     }
     return { path: d, t0: first, tN: last };
@@ -107,14 +102,9 @@ export default function LiveTrendChart({
       accessibilityLabel={`${title}: ${currentLabel} ${unit}`}>
       <View style={styles.headRow}>
         <Text style={[styles.title, { color: C.text }]}>{title}</Text>
-        <Text style={[styles.avg, { color: accent }]}>
-          {avgLabel} <Text style={styles.avgNum}>{avg ?? "--"}</Text> {unit}
+        <Text style={[styles.currentInline, { color: C.tint }]}>
+          {currentLabel} <Text style={styles.unitInline}>{unit}</Text>
         </Text>
-      </View>
-
-      <View style={styles.nowRow}>
-        <Text style={[styles.now, { color: C.text }]}>{currentLabel}</Text>
-        <Text style={[styles.nowUnit, { color: C.tint }]}> {unit}</Text>
       </View>
 
       <View
@@ -143,23 +133,15 @@ export default function LiveTrendChart({
             {ticks.map((tick) => {
               const y = ((max - tick) / (max - min)) * height;
               return (
-                <React.Fragment key={tick}>
-                  <Line
-                    x1={0}
-                    x2={width}
-                    y1={y}
-                    y2={y}
-                    stroke={C.border}
-                    strokeWidth={1}
-                  />
-                  <SvgText
-                    x={4}
-                    y={Math.min(height - 3, y + 12)}
-                    fill={C.sub}
-                    fontSize={11}>
-                    {tick}
-                  </SvgText>
-                </React.Fragment>
+                <Line
+                  key={tick}
+                  x1={0}
+                  x2={width}
+                  y1={y}
+                  y2={y}
+                  stroke={C.border}
+                  strokeWidth={1}
+                />
               );
             })}
             {path !== "" && (
@@ -167,7 +149,7 @@ export default function LiveTrendChart({
                 d={path}
                 fill="none"
                 stroke={`url(#${gradId})`}
-                strokeWidth={2.4}
+                strokeWidth={2.2}
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
@@ -190,26 +172,35 @@ export default function LiveTrendChart({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 14,
-    marginBottom: 16,
+    padding: 8,
+    marginBottom: 6,
   },
   headRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
+    marginBottom: 2,
   },
-  title: { fontSize: 17, fontWeight: "700" },
-  avg: { fontSize: 14, fontWeight: "600" },
-  avgNum: { fontSize: 20, fontWeight: "800" },
-  nowRow: { flexDirection: "row", alignItems: "baseline", marginVertical: 6 },
-  now: { fontSize: 44, fontWeight: "800", lineHeight: 50 },
-  nowUnit: { fontSize: 18, fontWeight: "700" },
+  title: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  currentInline: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  unitInline: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
   timeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 4,
+    marginTop: 2,
   },
-  time: { fontSize: 12 },
+  time: {
+    fontSize: 9,
+  },
 });

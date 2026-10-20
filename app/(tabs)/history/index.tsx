@@ -114,6 +114,9 @@ export default function History() {
         });
       }
 
+      // Sort newest recordings first (descending YYYYMMDDHHMMSS timestamp order)
+      csvs.sort((a, b) => b.id.localeCompare(a.id));
+
       setHistory(csvs);
       setLastUpdateTime(new Date());
 

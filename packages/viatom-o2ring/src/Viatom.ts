@@ -167,6 +167,18 @@ export function addRtPpgListener(listener: (e: RtPpgEvent) => void) {
   return (emitter.addListener as any)("onRtPpg", listener);
 }
 
+export type BloodPressureEvent = {
+  sbp: number;
+  dbp: number;
+  ts: number;
+};
+
+export function addBloodPressureListener(
+  listener: (e: BloodPressureEvent) => void
+) {
+  return (emitter.addListener as any)("onBloodPressure", listener);
+}
+
 export function addWaveformReceivedListener(
   listener: (e: { wFs: number[]; ts: number }) => void
 ) {

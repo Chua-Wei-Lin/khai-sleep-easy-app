@@ -122,7 +122,7 @@ export default function ShareScreen() {
 
       Alert.alert("Success", "File saved and uploaded for this patient.");
       resetShareIntent();
-      router.replace("/(tabs)/history");
+      router.replace("/(tabs)/home");
     } catch (e: any) {
       console.error("Error@Share.tsx:", e);
       Alert.alert("Error@Share.tsx", e?.message ?? "An error occurred during upload.");

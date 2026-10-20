@@ -197,7 +197,8 @@ class ViatomModule : Module() {
             "onError",            // { code, message }
             "onWaveformReceived",
             "onPpgChunkReady",   // { path, name, dir, rows, startTs }
-            "onPpgPacket"        // { samples, ts }  only while the live screen is open
+            "onPpgPacket",       // { samples, ts }  only while the live screen is open
+            "onBloodPressure"    // { sbp, dbp, ts }
         )
 
         OnStartObserving { emitter = appContext.eventEmitter(this@ViatomModule) }
@@ -238,8 +239,18 @@ class ViatomModule : Module() {
 
         // 3) Start scanning for Lepu devices
         AsyncFunction("scan") {
+            ev("scan() called")
             ensureServiceInitialized()
+            val app = appContext.reactContext?.applicationContext as? android.app.Application
+            if (app != null) {
+                try {
+                    BleServiceHelper.BleServiceHelper.initService(app)
+                } catch (_: Exception) {}
+            }
             subscribeIfNeeded()
+            try {
+                BleServiceHelper.BleServiceHelper.stopScan()
+            } catch (_: Exception) {}
             foundDevices.clear()
             BleServiceHelper.BleServiceHelper.startScan()
             true
@@ -247,21 +258,38 @@ class ViatomModule : Module() {
 
         // 4) Stop scan
         AsyncFunction("stopScan") {
-            BleServiceHelper.BleServiceHelper.stopScan()
+            ev("stopScan() called")
+            try {
+                BleServiceHelper.BleServiceHelper.stopScan()
+            } catch (_: Exception) {}
             true
         }
 
         // 5) Connect by MAC + model
         AsyncFunction("connect") { mac: String, _: Int ->
+            ev("connect() called mac=$mac")
             ensureServiceInitialized()
             subscribeIfNeeded()
 
-            val act = appContext.activityProvider?.currentActivity ?: throw CodedException("NO_ACTIVITY")
-            val bt = foundDevices[mac] ?: throw CodedException("DEVICE_NOT_FOUND")
+            try {
+                megaBp.initNative()
+            } catch (_: Exception) {}
 
-            BleServiceHelper.BleServiceHelper.setInterfaces(bt.model)
-            BleServiceHelper.BleServiceHelper.connect(act.applicationContext, bt.model, bt.device)
-            ev("connect() mac=$mac model=${bt.model}")
+            val act = appContext.activityProvider?.currentActivity ?: throw CodedException("NO_ACTIVITY")
+            val bt = foundDevices[mac]
+            if (bt == null) {
+                ev("connect() error: device not found in foundDevices for mac=$mac")
+                throw CodedException("DEVICE_NOT_FOUND")
+            }
+
+            try {
+                BleServiceHelper.BleServiceHelper.setInterfaces(bt.model)
+                BleServiceHelper.BleServiceHelper.connect(act.applicationContext, bt.model, bt.device)
+                ev("connect success mac=$mac model=${bt.model}")
+            } catch (e: Exception) {
+                ev("connect exception: ${e.message}")
+                throw CodedException("CONNECT_FAILED", e.message ?: "Connection failed", e)
+            }
 
             connectedModel = bt.model
             connectedMac = mac
@@ -271,14 +299,17 @@ class ViatomModule : Module() {
 
         // 6) Disconnect current device
         AsyncFunction("disconnect") {
+            ev("disconnect() called")
             stopPpgCapture()
             stopKeepAlive()
-            val model = connectedModel
-            if (model != null) {
-                BleServiceHelper.BleServiceHelper.disconnect(model, false)
-            } else {
+            try {
+                BleServiceHelper.BleServiceHelper.stopScan()
+            } catch (_: Exception) {}
+            try {
                 BleServiceHelper.BleServiceHelper.disconnect(false)
-            }
+            } catch (_: Exception) {}
+            connectedModel = null
+            connectedMac = null
             true
         }
 
@@ -604,16 +635,32 @@ class ViatomModule : Module() {
                 }
             }
 
-            // keep SpO2/PR updating while wave polling replaces param polling
+            // keep SpO2/PR/PI/Motion updating while wave polling replaces param polling
             emitter?.emit("onRealtime", mapOf(
                 "spo2" to rtWave.spo2, "pr" to rtWave.pr,
-                "pi" to rtWave.pi, "motion" to 0, "ts" to ts))
+                "pi" to (rtWave.pi.toDouble() / 10.0), "motion" to 0, "ts" to ts))
 
             if (liveWave) {
                 emitter?.emit("onPpgPacket", mapOf("samples" to wFs.toList(), "ts" to ts))
             }
 
             ready?.let { emitter?.emit("onPpgChunkReady", it) }
+
+            var lastSbp = 120.0
+            var lastDbp = 80.0
+            try {
+                for (sample in wFs) {
+                    val bp = megaBp.stepNative(sample)
+                    if (bp != null && bp.size >= 2 && bp[0] > 0.0 && bp[1] > 0.0) {
+                        lastSbp = bp[0]
+                        lastDbp = bp[1]
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("MegaBp", "stepNative error", e)
+            }
+
+            emitter?.emit("onBloodPressure", mapOf("sbp" to lastSbp.toInt(), "dbp" to lastDbp.toInt(), "ts" to ts))
         }
     }
 

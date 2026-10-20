@@ -24,13 +24,24 @@ import { useTheme } from "../../../theme/ThemeProvider";
 import { useTranslation } from "react-i18next";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { DeviceItem, useO2Ring } from "../../../service/O2RingProvider";
+import Constants from "expo-constants";
 import LivePpgWave from "../../../components/live/LivePpgWave";
 import LiveTrendChart, { Band } from "../../../components/live/LiveTrendChart";
+import LiveBpTrendChart from "../../../components/live/LiveBpTrendChart";
 import { useReadingSeries } from "../../../components/live/useReadingSeries";
+import HaemodynamicSummaryCard from "../../../components/live/HaemodynamicSummaryCard";
+
+const getDeviceImage = (name?: string) => {
+  if (name && /watch/i.test(name)) {
+    return require("../../../assets/images/O2 Watch.png");
+  }
+  return require("../../../assets/images/O2RingBGR.png");
+};
 
 // same validity rules as the big numbers: anything else shows "--" and leaves a gap in the chart
 const isValidSpo2 = (v: number) => v >= 20 && v <= 100;
 const isValidPr = (v: number) => v >= 20 && v <= 250;
+const isValidBpVal = (v: number) => v >= 30 && v <= 250;
 
 // line colour by value (cosmetic only; agree the thresholds with the clinical lead)
 const GREEN = "#5BD68A";
@@ -62,6 +73,10 @@ export default function Home() {
     knownDevices,
     spo2,
     pr,
+    sbp,
+    dbp,
+    pi,
+    motion,
     realtimeUpdatedAt,
     battery,
     batteryState,
@@ -80,6 +95,7 @@ export default function Home() {
   } = useO2Ring();
 
   const [knownDeviceMenuVisible, setKnownDeviceMenuVisible] = useState(false);
+  const [isGridFormat, setIsGridFormat] = useState(false);
   const menuScanWasActiveRef = useRef(false);
 
   // Keep latest refreshRealtime without forcing the focus effect to re-run on every reading
@@ -204,9 +220,14 @@ export default function Home() {
 
   const displayPr = pr == null || pr < 20 || pr > 250 ? "--" : `${pr}`;
 
+  const displaySbp = sbp == null || sbp < 30 || sbp > 250 ? "--" : `${sbp}`;
+  const displayDbp = dbp == null || dbp < 20 || dbp > 200 ? "--" : `${dbp}`;
+
   // rolling history for the charts; a new connection starts a new chart
   const spo2Series = useReadingSeries(spo2, realtimeUpdatedAt, isValidSpo2, connectedDevice?.mac);
   const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac);
+  const sbpSeries = useReadingSeries(sbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
+  const dbpSeries = useReadingSeries(dbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
   const batterySegments = useMemo(() => {
     if (battery == null || battery < 0 || battery > 100) {
       return null;
@@ -226,7 +247,7 @@ export default function Home() {
   }, [batteryState]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={["top", "left", "right"]}>
       {knownDeviceMenuVisible && (
         <SafeAreaView
           style={styles.knownMenuContainer}
@@ -333,7 +354,7 @@ export default function Home() {
                     }}>
                     <View style={{ flex: 1, flexDirection: "row" }}>
                       <Image
-                        source={require("../../../assets/images/O2RingBGR.png")}
+                        source={getDeviceImage(device.name)}
                         style={{ width: 40, height: 40, marginRight: 8 }}
                         resizeMode="contain"
                       />
@@ -376,7 +397,7 @@ export default function Home() {
 
       {connectedDevice ? (
         // Connected view
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
           <View style={styles.titleContainer}>
             <View style={styles.titleRow}>
               <View style={styles.titleLeft}>
@@ -393,7 +414,7 @@ export default function Home() {
                     setKnownDeviceMenuVisible(!knownDeviceMenuVisible)
                   }>
                   <Image
-                    source={require("../../../assets/images/O2RingBGR.png")}
+                    source={getDeviceImage(connectedDevice?.name)}
                     resizeMode="contain"
                     style={{
                       width: 56,
@@ -409,7 +430,7 @@ export default function Home() {
                     />
                   </View>
                 </Pressable>
-                <View style={{ marginLeft: 16 }}>
+                <View style={{ marginLeft: 12, flex: 1, flexShrink: 1 }}>
                   <Text style={[F.buttonText, { color: C.text }]}>
                     {connectedDevice.name}
                   </Text>
@@ -419,80 +440,182 @@ export default function Home() {
                 </View>
               </View>
 
-              <View
-                style={[
-                  styles.batteryChip,
-                  { borderColor: C.border, backgroundColor: C.bg2 },
-                ]}>
-                <MaterialCommunityIcons
-                  name={batteryIconName}
-                  size={22}
-                  color={C.text}
-                />
-                {batterySegments == null ? (
-                  <Text style={[styles.batteryText, { color: C.tint }]}>
-                    --
-                  </Text>
-                ) : (
-                  <View style={styles.batteryBlocks}>
-                    {Array.from({ length: 5 }).map((_, idx) => (
-                      <View
-                        key={idx}
-                        style={[
-                          styles.batteryBlock,
-                          {
-                            marginLeft: idx === 0 ? 0 : 3,
-                            backgroundColor:
-                              idx < batterySegments ? C.tint : "transparent",
-                            borderColor: C.border,
-                            opacity: idx < batterySegments ? 1 : 0.35,
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                )}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => setIsGridFormat((prev) => !prev)}
+                  style={[
+                    styles.batteryChip,
+                    { borderColor: C.border, backgroundColor: C.bg2, paddingHorizontal: 8 },
+                  ]}
+                  activeOpacity={0.8}>
+                  <MaterialCommunityIcons
+                    name={isGridFormat ? "view-agenda" : "view-grid"}
+                    size={22}
+                    color={C.tint}
+                  />
+                </TouchableOpacity>
+
+                <View
+                  style={[
+                    styles.batteryChip,
+                    { borderColor: C.border, backgroundColor: C.bg2 },
+                  ]}>
+                  <MaterialCommunityIcons
+                    name={batteryIconName}
+                    size={22}
+                    color={C.text}
+                  />
+                  {batterySegments == null ? (
+                    <Text style={[styles.batteryText, { color: C.tint }]}>
+                      --
+                    </Text>
+                  ) : (
+                    <View style={styles.batteryBlocks}>
+                      {Array.from({ length: 5 }).map((_, idx) => (
+                        <View
+                          key={idx}
+                          style={[
+                            styles.batteryBlock,
+                            {
+                              marginLeft: idx === 0 ? 0 : 3,
+                              backgroundColor:
+                                idx < batterySegments ? C.tint : "transparent",
+                              borderColor: C.border,
+                              opacity: idx < batterySegments ? 1 : 0.35,
+                            },
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
           </View>
 
           {/* Live Display */}
-          <View style={{ paddingHorizontal: 16 }}>
-            <LivePpgWave
-              active={isRealtimeReady}
-              title={t("ppgSignal")}
-              waitingText={t("waitingForSignal")}
-            />
+          <View style={{ paddingHorizontal: 10 }}>
+            {!isGridFormat ? (
+              // Format 1: Stacked (Compact to fit on one screen)
+              <>
+                <LiveTrendChart
+                  title="Oxygen"
+                  unit="%"
+                  currentLabel={displaySpo2}
+                  avgLabel={t("avg")}
+                  points={spo2Series}
+                  min={70}
+                  max={100}
+                  ticks={[100, 90, 80, 70]}
+                  bands={SPO2_BANDS}
+                  accent={C.tint}
+                  height={40}
+                />
 
-            <LiveTrendChart
-              title={t("oxygenLevel")}
-              unit="%"
-              currentLabel={displaySpo2}
-              avgLabel={t("avg")}
-              points={spo2Series}
-              min={70}
-              max={100}
-              ticks={[100, 90, 80, 70]}
-              bands={SPO2_BANDS}
-              accent={C.tint}
-            />
+                <LiveTrendChart
+                  title="Pulse Rate"
+                  unit="bpm"
+                  currentLabel={displayPr}
+                  avgLabel={t("avg")}
+                  points={prSeries}
+                  min={25}
+                  max={250}
+                  ticks={[250, 125, 25]}
+                  bands={PR_BANDS}
+                  accent={AMBER}
+                  height={40}
+                />
 
-            <LiveTrendChart
-              title={t("pulseRate")}
-              unit="bpm"
-              currentLabel={displayPr}
-              avgLabel={t("avg")}
-              points={prSeries}
-              min={25}
-              max={250}
-              ticks={[250, 125, 25]}
-              bands={PR_BANDS}
-              accent={AMBER}
+                <LiveBpTrendChart
+                  title="Blood Pressure"
+                  unit="mmHg"
+                  currentSbp={displaySbp}
+                  currentDbp={displayDbp}
+                  sbpPoints={sbpSeries}
+                  dbpPoints={dbpSeries}
+                  height={40}
+                />
+
+                <LivePpgWave
+                  active={isRealtimeReady}
+                  title="PPG"
+                  waitingText={t("waitingForSignal")}
+                  height={40}
+                />
+              </>
+            ) : (
+              // Format 2: 2-Column Grid (Bigger charts)
+              <>
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <LiveTrendChart
+                      title="Oxygen"
+                      unit="%"
+                      currentLabel={displaySpo2}
+                      avgLabel={t("avg")}
+                      points={spo2Series}
+                      min={70}
+                      max={100}
+                      ticks={[100, 90, 80, 70]}
+                      bands={SPO2_BANDS}
+                      accent={C.tint}
+                      height={55}
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <LiveBpTrendChart
+                      title="Blood Pressure"
+                      unit="mmHg"
+                      currentSbp={displaySbp}
+                      currentDbp={displayDbp}
+                      sbpPoints={sbpSeries}
+                      dbpPoints={dbpSeries}
+                      height={55}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.gridRow}>
+                  <View style={styles.gridCol}>
+                    <LiveTrendChart
+                      title="Pulse Rate"
+                      unit="bpm"
+                      currentLabel={displayPr}
+                      avgLabel={t("avg")}
+                      points={prSeries}
+                      min={25}
+                      max={250}
+                      ticks={[250, 125, 25]}
+                      bands={PR_BANDS}
+                      accent={AMBER}
+                      height={55}
+                    />
+                  </View>
+                  <View style={styles.gridCol}>
+                    <LivePpgWave
+                      active={isRealtimeReady}
+                      title="PPG"
+                      waitingText={t("waitingForSignal")}
+                      height={55}
+                    />
+                  </View>
+                </View>
+              </>
+            )}
+
+            <HaemodynamicSummaryCard
+              prPoints={prSeries}
+              currentSpo2={spo2}
+              currentPr={pr}
+              currentSbp={sbp}
+              currentDbp={dbp}
+              currentPi={pi}
+              currentMotion={motion}
             />
 
             <TouchableOpacity
               onPress={handleDisconnect}
-              style={[styles.button, { backgroundColor: C.danger }]}
+              style={[styles.button, { backgroundColor: C.danger, paddingVertical: 10, marginTop: 4 }]}
               activeOpacity={0.85}>
               <Text style={[F.buttonText]}>{t("disconnect")}</Text>
             </TouchableOpacity>
@@ -516,6 +639,9 @@ export default function Home() {
             activeOpacity={0.85}>
             <Text style={[F.buttonText]}>{t("connectDevice")}</Text>
           </TouchableOpacity>
+          <Text style={{ color: C.sub, fontSize: 12, marginTop: 8 }}>
+            v{Constants.expoConfig?.version ?? "1.2.2"}
+          </Text>
         </View>
       )}
     </SafeAreaView>
@@ -566,6 +692,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+  },
+  gridRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 4,
+  },
+  gridCol: {
+    flex: 1,
   },
   batteryChip: {
     flexDirection: "row",

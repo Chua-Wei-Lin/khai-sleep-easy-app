@@ -16,6 +16,7 @@ import { useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { loginWithEmailAndPassword } from "../service/Welcome";
+import Constants from "expo-constants";
 
 export default function Welcome() {
   const { colors: C, fonts: F, isDark } = useTheme();
@@ -54,7 +55,7 @@ export default function Welcome() {
         );
       }
 
-      router.replace("/(tabs)/history");
+      router.replace("/(tabs)/home");
     } catch (error) {
       console.error("Error@Welcome.tsx:", error);
       const message =
@@ -144,6 +145,9 @@ export default function Welcome() {
             {isSubmitting ? "Logging in..." : "Log In"}
           </Text>
         </TouchableOpacity>
+        <Text style={{ color: C.sub, fontSize: 12, marginTop: 8, textAlign: "center" }}>
+          v{Constants.expoConfig?.version ?? "1.2.2"}
+        </Text>
       </View>
       <View style={styles.supportContainer}>
         <Text

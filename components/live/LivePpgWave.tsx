@@ -262,18 +262,18 @@ export default function LivePpgWave({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 14,
-    marginBottom: 16,
+    padding: 8,
+    marginBottom: 6,
   },
   headRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  title: { fontSize: 17, fontWeight: "700" },
-  hz: { fontSize: 12 },
-  waiting: { position: "absolute", alignSelf: "center", fontSize: 14 },
+  title: { fontSize: 13, fontWeight: "700" },
+  hz: { fontSize: 10 },
+  waiting: { position: "absolute", alignSelf: "center", fontSize: 12 },
 });

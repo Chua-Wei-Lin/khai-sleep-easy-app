@@ -15,6 +15,13 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../../../theme/ThemeProvider";
 import { DeviceItem, useO2Ring } from "../../../service/O2RingProvider";
 
+const getDeviceImage = (name?: string) => {
+  if (name && /watch/i.test(name)) {
+    return require("../../../assets/images/O2 Watch.png");
+  }
+  return require("../../../assets/images/O2RingBGR.png");
+};
+
 type DeviceRowProps = {
   item: DeviceItem;
   onPress: (item: DeviceItem) => void;
@@ -43,7 +50,7 @@ function DeviceRow({ item, onPress, disabled, connecting }: DeviceRowProps) {
       activeOpacity={0.8}
       disabled={disabled}>
       <Image
-        source={require("../../../assets/images/O2RingBGR.png")}
+        source={getDeviceImage(item.name)}
         style={{ width: 40, height: 40, marginRight: 8 }}
         resizeMode="contain"
       />
