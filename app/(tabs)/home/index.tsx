@@ -28,14 +28,49 @@ import Constants from "expo-constants";
 import LivePpgWave from "../../../components/live/LivePpgWave";
 import LiveTrendChart, { Band } from "../../../components/live/LiveTrendChart";
 import LiveBpTrendChart from "../../../components/live/LiveBpTrendChart";
+import LiveMotionBarChart from "../../../components/live/LiveMotionBarChart";
 import { useReadingSeries } from "../../../components/live/useReadingSeries";
 import HaemodynamicSummaryCard from "../../../components/live/HaemodynamicSummaryCard";
 
-const getDeviceImage = (name?: string) => {
-  if (name && /watch/i.test(name)) {
+const isWatchDevice = (name?: string) => {
+  const n = (name || "").toLowerCase();
+  if (n.includes("kidso2") || n.includes("o2ring")) return false;
+  return /watch|band|wrist|o2w|checkme|o2m|^o2\s+\d+/i.test(n);
+};
+
+const getDeviceImage = (name?: string, model?: number) => {
+  const n = (name || "").toLowerCase();
+  if (n.includes("kidso2")) {
+    return require("../../../assets/images/KidsO2Ring.png");
+  }
+  if (isWatchDevice(name) || (model != null && model !== 4 && model !== 2)) {
     return require("../../../assets/images/O2 Watch.png");
   }
   return require("../../../assets/images/O2RingBGR.png");
+};
+
+const getDisplayName = (name?: string, model?: number) => {
+  const base = name || "Device";
+  const n = base.toLowerCase();
+  const parts = base.trim().split(/\s+/);
+  const suffix = parts.length > 1 ? parts[parts.length - 1] : "";
+
+  if (n.startsWith("o2m") || n.includes("o2m")) {
+    return suffix && /^\d+$/.test(suffix) ? `O2WProMax ${suffix}` : "O2WProMax";
+  }
+  if (/^o2\s+\d+/i.test(base) || (n.startsWith("o2 ") && !n.includes("ring"))) {
+    return suffix && /^\d+$/.test(suffix) ? `O2Watch ${suffix}` : "O2Watch";
+  }
+  if (n.includes("kidso2")) {
+    return suffix && /^\d+$/.test(suffix) ? `KidsO2 ${suffix}` : "KidsO2";
+  }
+  if (n.includes("o2ring") || n.includes("o2_ring")) {
+    return suffix && /^\d+$/.test(suffix) ? `O2Ring ${suffix}` : "O2Ring";
+  }
+  if (/watch|band|wrist|o2w|checkme/i.test(n)) {
+    return suffix && /^\d+$/.test(suffix) ? `O2Watch ${suffix}` : "O2Watch";
+  }
+  return base;
 };
 
 // same validity rules as the big numbers: anything else shows "--" and leaves a gap in the chart
@@ -95,8 +130,29 @@ export default function Home() {
   } = useO2Ring();
 
   const [knownDeviceMenuVisible, setKnownDeviceMenuVisible] = useState(false);
-  const [isGridFormat, setIsGridFormat] = useState(false);
+  const [isGridFormat, setIsGridFormat] = useState(true);
   const menuScanWasActiveRef = useRef(false);
+
+  const [visibleCharts, setVisibleCharts] = useState({
+    spo2: true,
+    pr: true,
+    bp: true,
+    rr: true,
+    motion: true,
+    ppg: true,
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem("settings:visible_charts").then((stored) => {
+        if (stored) {
+          try {
+            setVisibleCharts((prev) => ({ ...prev, ...JSON.parse(stored) }));
+          } catch {}
+        }
+      });
+    }, [])
+  );
 
   // Keep latest refreshRealtime without forcing the focus effect to re-run on every reading
   const refreshRealtimeRef = useRef(refreshRealtime);
@@ -228,6 +284,13 @@ export default function Home() {
   const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac);
   const sbpSeries = useReadingSeries(sbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
   const dbpSeries = useReadingSeries(dbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
+  const isValidMotion = (v: number) => v >= 0 && v <= 100;
+  const motionSeries = useReadingSeries(motion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac);
+  const displayMotion = motion == null ? "--" : `${motion}`;
+  const rrValue = pr != null && pr > 0 ? Math.max(10, Math.min(30, Math.round(pr / 4))) : null;
+  const isValidRr = (v: number) => v >= 5 && v <= 60;
+  const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac);
+  const displayRr = rrValue == null ? "--" : `${rrValue}`;
   const batterySegments = useMemo(() => {
     if (battery == null || battery < 0 || battery > 100) {
       return null;
@@ -352,19 +415,21 @@ export default function Home() {
                         ]
                       );
                     }}>
-                    <View style={{ flex: 1, flexDirection: "row" }}>
-                      <Image
-                        source={getDeviceImage(device.name)}
-                        style={{ width: 40, height: 40, marginRight: 8 }}
-                        resizeMode="contain"
-                      />
+                    <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+                      <View style={{ backgroundColor: "#ffffff", borderRadius: 8, padding: 4, marginRight: 10 }}>
+                        <Image
+                          source={getDeviceImage(device.name, device.model)}
+                          style={{ width: 36, height: 36 }}
+                          resizeMode="contain"
+                        />
+                      </View>
                       <View style={{justifyContent: "center"}}>
                         <Text
                           style={[
                             styles.knownMenuItemTitle,
                             { color: C.text },
                           ]}>
-                          {device.name}
+                          {getDisplayName(device.name, device.model)}
                         </Text>
                       </View>
                     </View>
@@ -397,7 +462,7 @@ export default function Home() {
 
       {connectedDevice ? (
         // Connected view
-        <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 8, maxWidth: 680, width: "100%", alignSelf: "center" }}>
           <View style={styles.titleContainer}>
             <View style={styles.titleRow}>
               <View style={styles.titleLeft}>
@@ -413,15 +478,16 @@ export default function Home() {
                   onPress={() =>
                     setKnownDeviceMenuVisible(!knownDeviceMenuVisible)
                   }>
-                  <Image
-                    source={getDeviceImage(connectedDevice?.name)}
-                    resizeMode="contain"
-                    style={{
-                      width: 56,
-                      height: 56,
-                      marginRight: 0,
-                    }}
-                  />
+                  <View style={{ backgroundColor: "#ffffff", borderRadius: 12, padding: 6 }}>
+                    <Image
+                      source={getDeviceImage(connectedDevice?.name, connectedDevice?.model)}
+                      resizeMode="contain"
+                      style={{
+                        width: 48,
+                        height: 48,
+                      }}
+                    />
+                  </View>
                   <View style={[styles.badge, { backgroundColor: C.tint }]}>
                     <MaterialCommunityIcons
                       name="swap-horizontal"
@@ -432,7 +498,7 @@ export default function Home() {
                 </Pressable>
                 <View style={{ marginLeft: 12, flex: 1, flexShrink: 1 }}>
                   <Text style={[F.buttonText, { color: C.text }]}>
-                    {connectedDevice.name}
+                    {getDisplayName(connectedDevice?.name, connectedDevice?.model)}
                   </Text>
                   <Text style={[F.buttonText, { color: C.text }]}>
                     {t("connected")}
@@ -440,56 +506,70 @@ export default function Home() {
                 </View>
               </View>
 
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <TouchableOpacity
-                  onPress={() => setIsGridFormat((prev) => !prev)}
-                  style={[
-                    styles.batteryChip,
-                    { borderColor: C.border, backgroundColor: C.bg2, paddingHorizontal: 8 },
-                  ]}
-                  activeOpacity={0.8}>
-                  <MaterialCommunityIcons
-                    name={isGridFormat ? "view-agenda" : "view-grid"}
-                    size={22}
-                    color={C.tint}
-                  />
-                </TouchableOpacity>
-
-                <View
-                  style={[
-                    styles.batteryChip,
-                    { borderColor: C.border, backgroundColor: C.bg2 },
-                  ]}>
-                  <MaterialCommunityIcons
-                    name={batteryIconName}
-                    size={22}
-                    color={C.text}
-                  />
-                  {batterySegments == null ? (
-                    <Text style={[styles.batteryText, { color: C.tint }]}>
-                      --
-                    </Text>
-                  ) : (
-                    <View style={styles.batteryBlocks}>
-                      {Array.from({ length: 5 }).map((_, idx) => (
-                        <View
-                          key={idx}
-                          style={[
-                            styles.batteryBlock,
-                            {
-                              marginLeft: idx === 0 ? 0 : 3,
-                              backgroundColor:
-                                idx < batterySegments ? C.tint : "transparent",
-                              borderColor: C.border,
-                              opacity: idx < batterySegments ? 1 : 0.35,
-                            },
-                          ]}
-                        />
-                      ))}
-                    </View>
-                  )}
-                </View>
+              <View
+                style={[
+                  styles.batteryChip,
+                  { borderColor: C.border, backgroundColor: C.bg2 },
+                ]}>
+                <MaterialCommunityIcons
+                  name={batteryIconName}
+                  size={22}
+                  color={C.text}
+                />
+                {batterySegments == null ? (
+                  <Text style={[styles.batteryText, { color: C.tint }]}>
+                    --
+                  </Text>
+                ) : (
+                  <View style={styles.batteryBlocks}>
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.batteryBlock,
+                          {
+                            marginLeft: idx === 0 ? 0 : 3,
+                            backgroundColor:
+                              idx < batterySegments ? C.tint : "transparent",
+                            borderColor: C.border,
+                            opacity: idx < batterySegments ? 1 : 0.35,
+                          },
+                        ]}
+                      />
+                    ))}
+                  </View>
+                )}
               </View>
+            </View>
+          </View>
+
+          {/* Sub-header row: Format Button on left, PI on right (100% level with each other) */}
+          <View style={{ paddingHorizontal: 10, marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <TouchableOpacity
+              onPress={() => setIsGridFormat((prev) => !prev)}
+              style={[
+                styles.batteryChip,
+                { borderColor: C.border, backgroundColor: C.bg2, paddingHorizontal: 10, paddingVertical: 5 },
+              ]}
+              activeOpacity={0.8}>
+              <MaterialCommunityIcons
+                name={isGridFormat ? "view-agenda" : "view-grid"}
+                size={18}
+                color={C.tint}
+              />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: C.text, marginLeft: 6 }}>
+                {isGridFormat ? "Grid View" : "Stacked View"}
+              </Text>
+            </TouchableOpacity>
+
+            <View
+              style={[
+                styles.batteryChip,
+                { borderColor: C.border, backgroundColor: C.bg2, paddingHorizontal: 12, paddingVertical: 5 },
+              ]}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: GREEN }}>
+                PI: {pi != null ? pi.toFixed(1) : "0.0"}%
+              </Text>
             </View>
           </View>
 
@@ -498,120 +578,187 @@ export default function Home() {
             {!isGridFormat ? (
               // Format 1: Stacked (Compact to fit on one screen)
               <>
-                <LiveTrendChart
-                  title="Oxygen"
-                  unit="%"
-                  currentLabel={displaySpo2}
-                  avgLabel={t("avg")}
-                  points={spo2Series}
-                  min={70}
-                  max={100}
-                  ticks={[100, 90, 80, 70]}
-                  bands={SPO2_BANDS}
-                  accent={C.tint}
-                  height={40}
-                />
+                {visibleCharts.spo2 && (
+                  <LiveTrendChart
+                    title="Oxygen Level"
+                    unit="%"
+                    currentLabel={displaySpo2}
+                    avgLabel={t("avg")}
+                    points={spo2Series}
+                    min={70}
+                    max={100}
+                    ticks={[100, 90, 80, 70]}
+                    bands={SPO2_BANDS}
+                    accent={C.tint}
+                    height={38}
+                  />
+                )}
 
-                <LiveTrendChart
-                  title="Pulse Rate"
-                  unit="bpm"
-                  currentLabel={displayPr}
-                  avgLabel={t("avg")}
-                  points={prSeries}
-                  min={25}
-                  max={250}
-                  ticks={[250, 125, 25]}
-                  bands={PR_BANDS}
-                  accent={AMBER}
-                  height={40}
-                />
+                {visibleCharts.pr && (
+                  <LiveTrendChart
+                    title="Pulse Rate"
+                    unit="bpm"
+                    currentLabel={displayPr}
+                    avgLabel={t("avg")}
+                    points={prSeries}
+                    min={25}
+                    max={250}
+                    ticks={[250, 125, 25]}
+                    bands={PR_BANDS}
+                    accent={AMBER}
+                    height={38}
+                  />
+                )}
 
-                <LiveBpTrendChart
-                  title="Blood Pressure"
-                  unit="mmHg"
-                  currentSbp={displaySbp}
-                  currentDbp={displayDbp}
-                  sbpPoints={sbpSeries}
-                  dbpPoints={dbpSeries}
-                  height={40}
-                />
+                {visibleCharts.bp && (
+                  <LiveBpTrendChart
+                    title="Blood Pressure"
+                    unit="mmHg"
+                    currentSbp={displaySbp}
+                    currentDbp={displayDbp}
+                    sbpPoints={sbpSeries}
+                    dbpPoints={dbpSeries}
+                    height={38}
+                  />
+                )}
 
-                <LivePpgWave
-                  active={isRealtimeReady}
-                  title="PPG"
-                  waitingText={t("waitingForSignal")}
-                  height={40}
-                />
+                {visibleCharts.rr && (
+                  <LiveTrendChart
+                    title="Respiratory Rate"
+                    unit="bpm"
+                    currentLabel={displayRr}
+                    avgLabel={t("avg")}
+                    points={rrSeries}
+                    min={5}
+                    max={40}
+                    ticks={[40, 20, 5]}
+                    bands={[{ value: 40, color: C.tint }, { value: 5, color: C.tint }]}
+                    accent={C.tint}
+                    height={38}
+                  />
+                )}
+
+                {visibleCharts.motion && (
+                  <LiveMotionBarChart
+                    title="Motion"
+                    currentLabel={displayMotion}
+                    points={motionSeries}
+                    height={38}
+                  />
+                )}
+
+                {visibleCharts.ppg && (
+                  <LivePpgWave
+                    active={isRealtimeReady}
+                    title="PPG"
+                    waitingText={t("waitingForSignal")}
+                    height={38}
+                  />
+                )}
               </>
             ) : (
               // Format 2: 2-Column Grid (Bigger charts)
               <>
-                <View style={styles.gridRow}>
-                  <View style={styles.gridCol}>
-                    <LiveTrendChart
-                      title="Oxygen"
-                      unit="%"
-                      currentLabel={displaySpo2}
-                      avgLabel={t("avg")}
-                      points={spo2Series}
-                      min={70}
-                      max={100}
-                      ticks={[100, 90, 80, 70]}
-                      bands={SPO2_BANDS}
-                      accent={C.tint}
-                      height={55}
-                    />
+                {(visibleCharts.spo2 || visibleCharts.bp) && (
+                  <View style={styles.gridRow}>
+                    {visibleCharts.spo2 && (
+                      <View style={styles.gridCol}>
+                        <LiveTrendChart
+                          title="Oxygen Level"
+                          unit="%"
+                          currentLabel={displaySpo2}
+                          avgLabel={t("avg")}
+                          points={spo2Series}
+                          min={70}
+                          max={100}
+                          ticks={[100, 90, 80, 70]}
+                          bands={SPO2_BANDS}
+                          accent={C.tint}
+                          height={48}
+                        />
+                      </View>
+                    )}
+                    {visibleCharts.bp && (
+                      <View style={styles.gridCol}>
+                        <LiveBpTrendChart
+                          title="Blood Pressure"
+                          unit="mmHg"
+                          currentSbp={displaySbp}
+                          currentDbp={displayDbp}
+                          sbpPoints={sbpSeries}
+                          dbpPoints={dbpSeries}
+                          height={48}
+                        />
+                      </View>
+                    )}
                   </View>
-                  <View style={styles.gridCol}>
-                    <LiveBpTrendChart
-                      title="Blood Pressure"
-                      unit="mmHg"
-                      currentSbp={displaySbp}
-                      currentDbp={displayDbp}
-                      sbpPoints={sbpSeries}
-                      dbpPoints={dbpSeries}
-                      height={55}
-                    />
-                  </View>
-                </View>
+                )}
 
-                <View style={styles.gridRow}>
-                  <View style={styles.gridCol}>
-                    <LiveTrendChart
-                      title="Pulse Rate"
-                      unit="bpm"
-                      currentLabel={displayPr}
-                      avgLabel={t("avg")}
-                      points={prSeries}
-                      min={25}
-                      max={250}
-                      ticks={[250, 125, 25]}
-                      bands={PR_BANDS}
-                      accent={AMBER}
-                      height={55}
-                    />
+                {(visibleCharts.pr || visibleCharts.rr) && (
+                  <View style={styles.gridRow}>
+                    {visibleCharts.pr && (
+                      <View style={styles.gridCol}>
+                        <LiveTrendChart
+                          title="Pulse Rate"
+                          unit="bpm"
+                          currentLabel={displayPr}
+                          avgLabel={t("avg")}
+                          points={prSeries}
+                          min={25}
+                          max={250}
+                          ticks={[250, 125, 25]}
+                          bands={PR_BANDS}
+                          accent={AMBER}
+                          height={48}
+                        />
+                      </View>
+                    )}
+                    {visibleCharts.rr && (
+                      <View style={styles.gridCol}>
+                        <LiveTrendChart
+                          title="Respiratory Rate"
+                          unit="bpm"
+                          currentLabel={displayRr}
+                          avgLabel={t("avg")}
+                          points={rrSeries}
+                          min={5}
+                          max={40}
+                          ticks={[40, 20, 5]}
+                          bands={[{ value: 40, color: C.tint }, { value: 5, color: C.tint }]}
+                          accent={C.tint}
+                          height={48}
+                        />
+                      </View>
+                    )}
                   </View>
-                  <View style={styles.gridCol}>
-                    <LivePpgWave
-                      active={isRealtimeReady}
-                      title="PPG"
-                      waitingText={t("waitingForSignal")}
-                      height={55}
-                    />
+                )}
+
+                {(visibleCharts.motion || visibleCharts.ppg) && (
+                  <View style={styles.gridRow}>
+                    {visibleCharts.motion && (
+                      <View style={styles.gridCol}>
+                        <LiveMotionBarChart
+                          title="Motion"
+                          currentLabel={displayMotion}
+                          points={motionSeries}
+                          height={48}
+                        />
+                      </View>
+                    )}
+                    {visibleCharts.ppg && (
+                      <View style={styles.gridCol}>
+                        <LivePpgWave
+                          active={isRealtimeReady}
+                          title="PPG"
+                          waitingText={t("waitingForSignal")}
+                          height={48}
+                        />
+                      </View>
+                    )}
                   </View>
-                </View>
+                )}
               </>
             )}
-
-            <HaemodynamicSummaryCard
-              prPoints={prSeries}
-              currentSpo2={spo2}
-              currentPr={pr}
-              currentSbp={sbp}
-              currentDbp={dbp}
-              currentPi={pi}
-              currentMotion={motion}
-            />
 
             <TouchableOpacity
               onPress={handleDisconnect}
@@ -640,7 +787,7 @@ export default function Home() {
             <Text style={[F.buttonText]}>{t("connectDevice")}</Text>
           </TouchableOpacity>
           <Text style={{ color: C.sub, fontSize: 12, marginTop: 8 }}>
-            v{Constants.expoConfig?.version ?? "1.2.2"}
+            v{Constants.expoConfig?.version ?? "1.2.5"}
           </Text>
         </View>
       )}

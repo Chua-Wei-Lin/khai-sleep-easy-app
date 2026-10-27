@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { LayoutChangeEvent, StyleSheet, Text, View } from "react-native";
-import Svg, { Line, Path } from "react-native-svg";
+import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useTheme } from "../../theme/ThemeProvider";
 import type { SeriesPoint } from "./useReadingSeries";
 
@@ -36,19 +36,22 @@ export default function LiveBpTrendChart({
     setWidth(Math.round(e.nativeEvent.layout.width));
 
   const min = 40;
-  const max = 180;
-  const ticks = [160, 120, 80, 40];
+  const max = 200;
+  const ticks = [200, 160, 120, 80, 40];
 
   const buildPath = (points: SeriesPoint[]) => {
-    if (!width || points.length === 0) return { path: "", t0: 0, tN: 0 };
+    if (!width || points.length === 0) return { path: "", t0: 0, tN: 0, lastPointCoord: null };
+    const windowMs = 2 * 60 * 1000; // 2-minute rolling window
     const first = points[0].t;
     const last = points[points.length - 1].t;
-    const span = Math.max(last - first, 30000);
+    const span = Math.max(last - first, windowMs); // starts at left edge and progresses right over 2 minutes
     const maxPts = Math.max(20, Math.floor(width / 2));
     const step = Math.max(1, Math.ceil(points.length / maxPts));
     const gapMs = Math.max(5000, step * 2000);
     let d = "";
     let prevT = -Infinity;
+    let lastX = 0;
+    let lastY = 0;
 
     for (let i = 0; i < points.length; i += step) {
       const end = Math.min(points.length, i + step);
@@ -66,8 +69,10 @@ export default function LiveBpTrendChart({
         d += ` L${x.toFixed(1)} ${y.toFixed(1)}`;
       }
       prevT = t;
+      lastX = x;
+      lastY = y;
     }
-    return { path: d, t0: first, tN: last };
+    return { path: d, t0: first, tN: last, lastPointCoord: { x: lastX, y: lastY } };
   };
 
   const sbpResult = useMemo(() => buildPath(sbpPoints), [sbpPoints, width, height]);
@@ -79,10 +84,10 @@ export default function LiveBpTrendChart({
   return (
     <View style={[styles.card, { backgroundColor: C.bg2, borderColor: C.border }]}>
       <View style={styles.headRow}>
-        <Text style={[styles.title, { color: C.text }]}>{title}</Text>
+        <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>{title}</Text>
         <View style={styles.legendRow}>
-          <Text style={[styles.legendText, { color: C.tint }]}>S:{currentSbp}</Text>
-          <Text style={[styles.legendText, { color: "#F5B031" }]}> D:{currentDbp}</Text>
+          <Text style={[styles.legendText, { color: "#E74C3C" }]} numberOfLines={1} adjustsFontSizeToFit>S:{currentSbp}</Text>
+          <Text style={[styles.legendText, { color: "#3498DB" }]} numberOfLines={1} adjustsFontSizeToFit> D:{currentDbp}</Text>
         </View>
       </View>
 
@@ -99,22 +104,31 @@ export default function LiveBpTrendChart({
             {ticks.map((tick) => {
               const y = ((max - tick) / (max - min)) * height;
               return (
-                <Line
-                  key={tick}
-                  x1={0}
-                  x2={width}
-                  y1={y}
-                  y2={y}
-                  stroke={C.border}
-                  strokeWidth={1}
-                />
+                <React.Fragment key={tick}>
+                  <Line
+                    x1={0}
+                    x2={width}
+                    y1={y}
+                    y2={y}
+                    stroke={C.border}
+                    strokeWidth={1}
+                  />
+                  <SvgText
+                    x={4}
+                    y={y <= 10 ? 9 : y >= height - 4 ? height - 2 : y + 3}
+                    fill={C.sub}
+                    fontSize={9}
+                    fontWeight="500">
+                    {tick}
+                  </SvgText>
+                </React.Fragment>
               );
             })}
             {sbpResult.path !== "" && (
               <Path
                 d={sbpResult.path}
                 fill="none"
-                stroke={C.tint}
+                stroke="#E74C3C"
                 strokeWidth={2.2}
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -124,10 +138,30 @@ export default function LiveBpTrendChart({
               <Path
                 d={dbpResult.path}
                 fill="none"
-                stroke="#F5B031"
+                stroke="#3498DB"
                 strokeWidth={2.2}
                 strokeLinejoin="round"
                 strokeLinecap="round"
+              />
+            )}
+            {sbpResult.lastPointCoord && (
+              <Circle
+                cx={sbpResult.lastPointCoord.x}
+                cy={sbpResult.lastPointCoord.y}
+                r={3.5}
+                fill="#E74C3C"
+                stroke="#ffffff"
+                strokeWidth={1}
+              />
+            )}
+            {dbpResult.lastPointCoord && (
+              <Circle
+                cx={dbpResult.lastPointCoord.x}
+                cy={dbpResult.lastPointCoord.y}
+                r={3.5}
+                fill="#3498DB"
+                stroke="#ffffff"
+                strokeWidth={1}
               />
             )}
           </Svg>
@@ -161,6 +195,7 @@ const styles = StyleSheet.create({
   },
   legendRow: {
     flexDirection: "row",
+    alignItems: "center",
   },
   legendText: {
     fontSize: 11,

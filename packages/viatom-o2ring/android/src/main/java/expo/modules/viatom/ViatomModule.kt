@@ -77,6 +77,18 @@ class ViatomModule : Module() {
         }
     }
 
+    private fun ensureWaveTaskRunning() {
+        if (!wavePolling) {
+            wavePacketsSeen = 0
+            pollCount = 0L
+            wavePolling = true
+            nextPollAt = SystemClock.uptimeMillis()
+            waveHandler.removeCallbacksAndMessages(null)
+            waveHandler.post(waveTask)
+            ev("ensureWaveTaskRunning: waveTask posted")
+        }
+    }
+
     private fun openChunkLocked(dir: java.io.File, ts: Long) {
         val stamp = java.text.SimpleDateFormat("yyyyMMddHHmmss", java.util.Locale.US)
             .format(java.util.Date(ts))
@@ -177,6 +189,9 @@ class ViatomModule : Module() {
 
     private var connectedModel: Int? = null
     private var connectedMac: String? = null
+    private var connectionSeq = 0L
+    private var lastStopScanTs = 0L
+    private var lastDisconnectTs = 0L
 
     // Keep references so observers can be removed cleanly
     private val liveObservers = mutableListOf<LiveObserver<*>>()
@@ -251,13 +266,17 @@ class ViatomModule : Module() {
             try {
                 BleServiceHelper.BleServiceHelper.stopScan()
             } catch (_: Exception) {}
-            foundDevices.clear()
             BleServiceHelper.BleServiceHelper.startScan()
             true
         }
 
         // 4) Stop scan
         AsyncFunction("stopScan") {
+            val now = System.currentTimeMillis()
+            if (now - lastStopScanTs < 400) {
+                return@AsyncFunction true
+            }
+            lastStopScanTs = now
             ev("stopScan() called")
             try {
                 BleServiceHelper.BleServiceHelper.stopScan()
@@ -266,39 +285,97 @@ class ViatomModule : Module() {
         }
 
         // 5) Connect by MAC + model
-        AsyncFunction("connect") { mac: String, _: Int ->
-            ev("connect() called mac=$mac")
-            ensureServiceInitialized()
-            subscribeIfNeeded()
+        AsyncFunction("connect") { mac: String, modelArg: Int ->
+            ev("connect() called mac=$mac modelArg=$modelArg")
+            val mySeq = ++connectionSeq
+            try {
+                ensureServiceInitialized()
+                subscribeIfNeeded()
+            } catch (e: Exception) {
+                ev("connect() init failed: ${e.message}")
+                throw CodedException("INIT_FAILED", e.message ?: "Init failed", e)
+            }
+
+            try {
+                BleServiceHelper.BleServiceHelper.stopScan()
+            } catch (e: Exception) {
+                ev("connect() stopScan warning: ${e.message}")
+            }
+
+            try {
+                Thread.sleep(350)
+            } catch (_: Exception) {}
 
             try {
                 megaBp.initNative()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                ev("connect() megaBp warning: ${e.message}")
+            }
 
-            val act = appContext.activityProvider?.currentActivity ?: throw CodedException("NO_ACTIVITY")
-            val bt = foundDevices[mac]
+            val act = appContext.activityProvider?.currentActivity
+            if (act == null) {
+                ev("connect() error: currentActivity is null")
+                throw CodedException("NO_ACTIVITY")
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(act, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    ev("connect() error: BLUETOOTH_CONNECT permission not granted")
+                    throw CodedException("PERMISSION_DENIED")
+                }
+            }
+
+            var bt = foundDevices[mac]
             if (bt == null) {
-                ev("connect() error: device not found in foundDevices for mac=$mac")
+                ev("connect() warning: device not in foundDevices map, trying direct BluetoothAdapter lookup for mac=$mac")
+                val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+                if (adapter != null && android.bluetooth.BluetoothAdapter.checkBluetoothAddress(mac)) {
+                    try {
+                        val device = adapter.getRemoteDevice(mac)
+                        if (device != null) {
+                            val modelCode = if (modelArg > 0) modelArg else 4
+                            bt = Bluetooth(modelCode, device.name ?: "O2Ring", device, 0, null)
+                            ev("connect() direct BluetoothDevice created successfully for mac=$mac model=$modelCode")
+                        }
+                    } catch (e: Exception) {
+                        ev("connect() getRemoteDevice failed: ${e.message}")
+                    }
+                }
+            }
+
+            if (bt == null) {
+                ev("connect() error: device not found anywhere for mac=$mac")
                 throw CodedException("DEVICE_NOT_FOUND")
             }
 
             try {
+                ev("connect() calling BleServiceHelper.connect for mac=$mac model=${bt.model}")
                 BleServiceHelper.BleServiceHelper.setInterfaces(bt.model)
                 BleServiceHelper.BleServiceHelper.connect(act.applicationContext, bt.model, bt.device)
                 ev("connect success mac=$mac model=${bt.model}")
             } catch (e: Exception) {
-                ev("connect exception: ${e.message}")
-                throw CodedException("CONNECT_FAILED", e.message ?: "Connection failed", e)
+                ev("connect exception caught: ${e.javaClass.simpleName} - ${e.message}")
+                e.printStackTrace()
+                throw CodedException("CONNECT_FAILED", "BLE connection failed: ${e.message}", e)
             }
 
-            connectedModel = bt.model
-            connectedMac = mac
+            // Only assign if this connection request wasn't superseded by another
+            if (connectionSeq == mySeq) {
+                connectedModel = bt.model
+                connectedMac = mac
+            }
 
             true
         }
 
         // 6) Disconnect current device
         AsyncFunction("disconnect") {
+            val mySeq = connectionSeq
+            val now = System.currentTimeMillis()
+            if (now - lastDisconnectTs < 800) {
+                return@AsyncFunction true
+            }
+            lastDisconnectTs = now
             ev("disconnect() called")
             stopPpgCapture()
             stopKeepAlive()
@@ -308,16 +385,23 @@ class ViatomModule : Module() {
             try {
                 BleServiceHelper.BleServiceHelper.disconnect(false)
             } catch (_: Exception) {}
-            connectedModel = null
-            connectedMac = null
+
+            if (connectionSeq == mySeq) {
+                connectedModel = null
+                connectedMac = null
+            }
             true
         }
 
         // 7) Start realtime param stream
         AsyncFunction("startRealtime") {
             val model = connectedModel ?: throw CodedException("NO_DEVICE_CONNECTED")
-            if (!wavePolling) {
+            liveWave = true
+            ensureWaveTaskRunning()
+            try {
                 BleServiceHelper.BleServiceHelper.oxyGetRtParam(model)
+            } catch (e: Exception) {
+                ev("startRealtime oxyGetRtParam error: ${e.message}")
             }
             true
         }
@@ -416,6 +500,9 @@ class ViatomModule : Module() {
         // The live screen switches this on while it is open: samples are sent to JavaScript only then
         AsyncFunction("setLiveWave") { enabled: Boolean ->
             liveWave = enabled
+            if (enabled && connectedModel != null) {
+                ensureWaveTaskRunning()
+            }
             true
         }
 
@@ -638,7 +725,7 @@ class ViatomModule : Module() {
             // keep SpO2/PR/PI/Motion updating while wave polling replaces param polling
             emitter?.emit("onRealtime", mapOf(
                 "spo2" to rtWave.spo2, "pr" to rtWave.pr,
-                "pi" to (rtWave.pi.toDouble() / 10.0), "motion" to 0, "ts" to ts))
+                "pi" to (rtWave.pi.toDouble() / 10.0), "motion" to rtWave.vector, "ts" to ts))
 
             if (liveWave) {
                 emitter?.emit("onPpgPacket", mapOf("samples" to wFs.toList(), "ts" to ts))

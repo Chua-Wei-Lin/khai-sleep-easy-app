@@ -146,7 +146,7 @@ export default function Welcome() {
           </Text>
         </TouchableOpacity>
         <Text style={{ color: C.sub, fontSize: 12, marginTop: 8, textAlign: "center" }}>
-          v{Constants.expoConfig?.version ?? "1.2.2"}
+          v{Constants.expoConfig?.version ?? "1.2.5"}
         </Text>
       </View>
       <View style={styles.supportContainer}>

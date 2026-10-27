@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
   LayoutChangeEvent,
@@ -6,38 +6,27 @@ import {
   Text,
   View,
 } from "react-native";
-import Svg, { Line, Path, Text as SvgText } from "react-native-svg";
+import Svg, { Line, Path } from "react-native-svg";
 import { useFocusEffect } from "expo-router";
 import * as O2Ring from "@ios-app/viatom-o2ring";
 import { useTheme } from "../../theme/ThemeProvider";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const FS = 125; // samples per second from the ring
+const FS = 125; // standard recording frequency (125 Hz)
 const WINDOW_SAMPLES = FS * 4; // 4 seconds on screen
-const START_BUFFER = FS; // wait for 1 s of samples before drawing
+const START_BUFFER = FS; // 1 second buffer
 const MAX_QUEUE = FS * 3;
 const TICK_MS = 50; // 20 redraws per second
-const DECIM = 2; // draw every 2nd sample: plenty of detail at phone width, half the work
 
-// Fixed vertical range, in the ring's own units (our recordings ran from about 50 to 170).
-// Values outside the range are clamped. Widen it if a patient's signal gets cut off.
 const RANGE_MIN = 30;
 const RANGE_MAX = 190;
-
-/**
- * The ring's waveform points downward (each pulse drops sharply). FLIP = true draws it
- * pulse-up and labels the axis in relative units (0 = weakest, top = strongest).
- * FLIP = false draws the ring's own numbers, as saved in the CSV.
- */
 const FLIP = true;
 
-type GridProps = { width: number; height: number; color: string; textColor: string };
+type GridProps = { width: number; height: number; color: string };
 
-// Static layer: grid lines and number range. It never changes, so it is drawn once.
-const PpgGrid = React.memo(function PpgGrid({ width, height, color, textColor }: GridProps) {
+// Static layer: clean reference grid lines
+const PpgGrid = React.memo(function PpgGrid({ width, height, color }: GridProps) {
   const pad = 6;
-  const top = FLIP ? RANGE_MAX - RANGE_MIN : RANGE_MAX;
-  const bottom = FLIP ? 0 : RANGE_MIN;
-  const mid = Math.round((top + bottom) / 2);
   return (
     <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
       {[0, 0.5, 1].map((f) => (
@@ -51,15 +40,6 @@ const PpgGrid = React.memo(function PpgGrid({ width, height, color, textColor }:
           strokeWidth={1}
         />
       ))}
-      <SvgText x={4} y={pad + 12} fill={textColor} fontSize={11}>
-        {top}
-      </SvgText>
-      <SvgText x={4} y={height / 2 - 3} fill={textColor} fontSize={11}>
-        {mid}
-      </SvgText>
-      <SvgText x={4} y={height - pad - 3} fill={textColor} fontSize={11}>
-        {bottom}
-      </SvgText>
     </Svg>
   );
 });
@@ -71,6 +51,7 @@ type WaveProps = {
   color: string;
   textColor: string;
   waitingText: string;
+  ppgHz: number;
 };
 
 // Moving layer: only this component re-renders while the wave scrolls.
@@ -81,9 +62,16 @@ const WaveLayer = React.memo(function WaveLayer({
   color,
   textColor,
   waitingText,
+  ppgHz,
 }: WaveProps) {
   const [d, setD] = useState("");
   const [waiting, setWaiting] = useState(true);
+
+  // Keep latest ppgHz in a ref so useEffect does NOT need to re-subscribe to native BLE stream when ppgHz changes
+  const ppgHzRef = useRef(ppgHz);
+  useEffect(() => {
+    ppgHzRef.current = ppgHz;
+  }, [ppgHz]);
 
   useEffect(() => {
     if (!run) return;
@@ -97,7 +85,6 @@ const WaveLayer = React.memo(function WaveLayer({
     const pad = 6;
     const h = height - pad * 2;
     const span = RANGE_MAX - RANGE_MIN;
-    const stepX = width / (WINDOW_SAMPLES - 1);
 
     try {
       O2Ring.setLiveWave(true);
@@ -113,6 +100,10 @@ const WaveLayer = React.memo(function WaveLayer({
     } catch {}
 
     const tick = () => {
+      const hz = ppgHzRef.current;
+      const decim = hz === 50 ? 5 : hz === 75 ? 4 : hz === 100 ? 3 : 2;
+      const stepX = width / (WINDOW_SAMPLES - 1);
+
       const now = Date.now();
       let n = 0;
       if (!playing) {
@@ -137,15 +128,25 @@ const WaveLayer = React.memo(function WaveLayer({
       }
 
       setWaiting(now - lastData > 3000);
-      if (buf.length < 2) return;
 
-      const startX = (WINDOW_SAMPLES - buf.length) * stepX; // new samples enter on the right
+      if (buf.length === 0) return;
+
+      if (buf.length === 1) {
+        const v = Math.min(RANGE_MAX, Math.max(RANGE_MIN, buf[0]));
+        const f = (v - RANGE_MIN) / span;
+        const y = pad + (FLIP ? f : 1 - f) * h;
+        setD(`M0 ${y.toFixed(1)} L${width.toFixed(1)} ${y.toFixed(1)}`);
+        return;
+      }
+
+      // Left-to-right sweep progression using current ppgHzRef decimation
       const parts: string[] = [];
-      for (let i = 0; i < buf.length; i += DECIM) {
+      for (let i = 0; i < buf.length; i += decim) {
         const v = Math.min(RANGE_MAX, Math.max(RANGE_MIN, buf[i]));
         const f = (v - RANGE_MIN) / span;
         const y = pad + (FLIP ? f : 1 - f) * h;
-        parts.push((i === 0 ? "M" : "L") + (startX + i * stepX).toFixed(1) + " " + y.toFixed(1));
+        const x = (i / (WINDOW_SAMPLES - 1)) * width;
+        parts.push((i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1));
       }
       setD(parts.join(" "));
     };
@@ -155,9 +156,6 @@ const WaveLayer = React.memo(function WaveLayer({
       clearInterval(timer);
       try {
         sub?.remove();
-      } catch {}
-      try {
-        O2Ring.setLiveWave(false);
       } catch {}
       setD("");
       setWaiting(true);
@@ -202,6 +200,18 @@ export default function LivePpgWave({
 }: Props) {
   const { colors: C } = useTheme();
   const [width, setWidth] = useState(0);
+  const [ppgHz, setPpgHz] = useState<number>(125);
+
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem("ppg_sampling_hz").then((val) => {
+        if (val === "100 Hz") setPpgHz(100);
+        else if (val === "75 Hz") setPpgHz(75);
+        else if (val === "50 Hz") setPpgHz(50);
+        else setPpgHz(125); // Default to 125 Hz
+      });
+    }, [])
+  );
 
   // only stream while this screen is in front and the app is in the foreground
   const [focused, setFocused] = useState(false);
@@ -231,7 +241,7 @@ export default function LivePpgWave({
       accessibilityLabel={title}>
       <View style={styles.headRow}>
         <Text style={[styles.title, { color: C.text }]}>{title}</Text>
-        <Text style={[styles.hz, { color: C.sub }]}>125 Hz</Text>
+        <Text style={[styles.hz, { color: C.sub }]}>{ppgHz} Hz</Text>
       </View>
 
       <View
@@ -244,7 +254,7 @@ export default function LivePpgWave({
         }}>
         {width > 0 && (
           <>
-            <PpgGrid width={width} height={height} color={C.border} textColor={C.sub} />
+            <PpgGrid width={width} height={height} color={C.border} />
             <WaveLayer
               run={run}
               width={width}
@@ -252,6 +262,7 @@ export default function LivePpgWave({
               color={C.tint}
               textColor={C.sub}
               waitingText={waitingText}
+              ppgHz={ppgHz}
             />
           </>
         )}

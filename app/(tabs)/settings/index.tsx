@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import { Alert, Linking } from "react-native";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
@@ -101,6 +101,20 @@ export default function SettingsScreen() {
             title: t("language"),
             icon: "language-outline",
             route: "/(tabs)/settings/Language",
+          },
+          {
+            id: "ppgHzRoute",
+            type: "link",
+            title: "PPG Sampling Rate",
+            icon: "pulse-outline",
+            route: "/(tabs)/settings/PpgHz",
+          },
+          {
+            id: "chartVisibility",
+            type: "link",
+            title: "Customize Dashboard Charts",
+            icon: "options-outline",
+            route: "/(tabs)/settings/ChartVisibility",
           },
         ],
       },
