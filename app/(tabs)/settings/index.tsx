@@ -116,6 +116,13 @@ export default function SettingsScreen() {
             icon: "options-outline",
             route: "/(tabs)/settings/ChartVisibility",
           },
+          {
+            id: "bpCalibration",
+            type: "link",
+            title: "Blood Pressure Calibration",
+            icon: "fitness-outline",
+            route: "/(tabs)/settings/BpCalibration",
+          },
         ],
       },
       /*

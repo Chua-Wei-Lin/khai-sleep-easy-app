@@ -75,21 +75,23 @@ class PpgKeepAliveService : Service() {
         if (Build.VERSION.SDK_INT >= 26) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (nm.getNotificationChannel(CHANNEL_ID) == null) {
-                nm.createNotificationChannel(
-                    NotificationChannel(CHANNEL_ID, "PPG recording", NotificationManager.IMPORTANCE_LOW)
-                )
+                val channel = NotificationChannel(CHANNEL_ID, "Background Monitoring", NotificationManager.IMPORTANCE_MIN).apply {
+                    setShowBadge(false)
+                    setSound(null, null)
+                }
+                nm.createNotificationChannel(channel)
             }
         }
     }
 
     private fun buildNotification() =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Recording PPG")
-            .setContentText("Keep the O2Ring on. Recording continues with the screen off.")
+            .setContentTitle("SleepEasy")
+            .setContentText("Monitoring active")
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(
                 packageManager.getLaunchIntentForPackage(packageName)?.let {

@@ -43,6 +43,7 @@ class ViatomModule : Module() {
     @Volatile private var nextPollAt = 0L
     @Volatile private var pollCount = 0L
     @Volatile private var liveWave = false   // the live screen turns this on while it is open
+    private var lastMotion = 0
 
     // Sends finished chunk files to the server from its own thread (does not depend on JavaScript)
     private val uploader = PpgUploader(log = { msg -> ev("upload: $msg") })
@@ -56,8 +57,9 @@ class ViatomModule : Module() {
     private var chunkFile: java.io.File? = null      // the open "<name>.csv.part" file
     private var chunkStartTs = 0L
     private var chunkSampleIdx = 0L
+    private var pollCycle = 0
 
-    // Asks the ring for one packet (~125 samples = 1 s) every second, on a fixed clock
+    // Asks the ring for one waveform packet (~125 samples = 1 s) every second on a fixed clock
     private val waveTask = object : Runnable {
         override fun run() {
             if (!wavePolling) return
@@ -70,10 +72,7 @@ class ViatomModule : Module() {
             }
             pollCount++
             if (pollCount % 300L == 0L) ev("heartbeat: polls=$pollCount")   // every ~5 minutes
-            nextPollAt += 1000L
-            val now = SystemClock.uptimeMillis()
-            if (nextPollAt < now) nextPollAt = now + 1000L   // we fell behind: do not fire a burst
-            waveHandler.postAtTime(this, nextPollAt)
+            waveHandler.postDelayed(this, 1000L)
         }
     }
 
@@ -393,16 +392,11 @@ class ViatomModule : Module() {
             true
         }
 
-        // 7) Start realtime param stream
+        // 7) Start realtime / waveform stream
         AsyncFunction("startRealtime") {
             val model = connectedModel ?: throw CodedException("NO_DEVICE_CONNECTED")
             liveWave = true
             ensureWaveTaskRunning()
-            try {
-                BleServiceHelper.BleServiceHelper.oxyGetRtParam(model)
-            } catch (e: Exception) {
-                ev("startRealtime oxyGetRtParam error: ${e.message}")
-            }
             true
         }
 
@@ -572,19 +566,12 @@ class ViatomModule : Module() {
             }
         }
 
-        // 1. Real-time param data (SpO2, PR, PI, motion)
+        // 1. Real-time param data (SpO2, PR, PI, motion) - update lastMotion state only
         addObserver(InterfaceEvent.Oxy.EventOxyRtParamData, InterfaceEvent::class.java) { evt ->
             val d = evt.data as RtParam
-            emitter?.emit(
-                "onRealtime",
-                mapOf(
-                    "spo2" to d.spo2,
-                    "pr" to d.pr,
-                    "pi" to d.pi,
-                    "motion" to d.vector,
-                    "ts" to System.currentTimeMillis()
-                )
-            )
+            if (d.vector >= 15) {
+                lastMotion = d.vector
+            }
         }
 
         // 2. Device info (battery, state, file list)
@@ -722,10 +709,20 @@ class ViatomModule : Module() {
                 }
             }
 
-            // keep SpO2/PR/PI/Motion updating while wave polling replaces param polling
+            val maxVal = wFs.maxOrNull() ?: 0
+            val minVal = wFs.minOrNull() ?: 0
+            val ac = (maxVal - minVal).toDouble()
+            val dc = wFs.average()
+            val motionVal = if (ac > 70.0) ((ac - 50.0) / 2.0).coerceIn(1.0, 100.0).toInt() else 0
+
+            val rawPi = rtWave.pi.toDouble()
+            val finalPi = if (rawPi > 0.0) (if (rawPi < 1.0) rawPi * 10.0 else if (rawPi <= 10.0) rawPi else rawPi / 10.0) else 2.5
+            val constrainPi = finalPi.coerceIn(0.5, 15.0)
+
+            // keep SpO2/PR/PI/Motion updating - single unified onRealtime emitter
             emitter?.emit("onRealtime", mapOf(
                 "spo2" to rtWave.spo2, "pr" to rtWave.pr,
-                "pi" to (rtWave.pi.toDouble() / 10.0), "motion" to rtWave.vector, "ts" to ts))
+                "pi" to String.format(java.util.Locale.US, "%.1f", constrainPi).toDouble(), "motion" to motionVal, "ts" to ts))
 
             if (liveWave) {
                 emitter?.emit("onPpgPacket", mapOf("samples" to wFs.toList(), "ts" to ts))

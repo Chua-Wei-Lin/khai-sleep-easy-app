@@ -132,7 +132,7 @@ function SettingsRow({
   );
 }
 
-export default React.memo(SettingsRow);
+export default SettingsRow;
 
 const styles = StyleSheet.create({
   row: {

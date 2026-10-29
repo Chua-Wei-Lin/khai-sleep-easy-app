@@ -21,6 +21,7 @@ type NativeViatomModule = {
   logEvent(message: string): Promise<boolean>;
   configurePpgUpload(uploadUrl: string, authHeader: string, patientId: string): Promise<boolean>;
   setLiveWave(enabled: boolean): Promise<boolean>;
+  setBpCalibration(sbp: number, dbp: number): Promise<boolean>;
 };
 
 const Native: NativeViatomModule = requireNativeModule("Viatom");
@@ -244,6 +245,14 @@ export function logEvent(message: string) {
 export function configurePpgUpload(uploadUrl: string, authHeader: string, patientId: string) {
   try {
     return Promise.resolve(Native.configurePpgUpload(uploadUrl, authHeader, patientId)).catch(() => false);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+export function setBpCalibration(sbp: number, dbp: number) {
+  try {
+    return Promise.resolve(Native.setBpCalibration(sbp, dbp)).catch(() => false);
   } catch {
     return Promise.resolve(false);
   }

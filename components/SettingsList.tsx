@@ -113,7 +113,7 @@ export default function SettingsList({
                   type={row.type}
                   title={row.title}
                   icon={row.icon}
-                  switchValue={isDarkRow ? isDark : isSelected}
+                  switchValue={isDarkRow ? isDark : (isSelected ?? switchValues?.[row.id] ?? row.switchValue)}
                   onToggleSwitch={
                     row.type === "switch"
                       ? (next) => onToggleSwitch?.(row.id, next)

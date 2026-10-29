@@ -568,6 +568,14 @@ const processReadQueue = useCallback(() => {
     return () => sub.remove();
   }, [startRealtimeStream, syncPatientId]);
 
+  // If SpO2 or PR is invalid/null (ring removed), instantly clear BP as well
+  useEffect(() => {
+    if (spo2 == null || spo2 < 20 || pr == null || pr < 20) {
+      setSbp(null);
+      setDbp(null);
+    }
+  }, [spo2, pr]);
+
   useEffect(() => {
     if (connectedDevice && serviceReady) {
       startRealtimeStream();
@@ -684,9 +692,15 @@ const processReadQueue = useCallback(() => {
       });
 
       subWave = O2Ring.addBloodPressureListener((bp) => {
-        if (bp?.sbp != null && bp?.dbp != null) {
-          setSbp(bp.sbp);
-          setDbp(bp.dbp);
+        if (bp?.sbp != null && bp?.dbp != null && bp.sbp > 30 && bp.dbp > 30) {
+          const high = Math.max(bp.sbp, bp.dbp);
+          const low = Math.min(bp.sbp, bp.dbp);
+          setSbp(high);
+          setDbp(low);
+          setRealtimeUpdatedAt(Date.now());
+        } else {
+          setSbp(null);
+          setDbp(null);
         }
       });
 

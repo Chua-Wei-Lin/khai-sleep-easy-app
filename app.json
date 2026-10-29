@@ -3,13 +3,13 @@
     "name": "SleepEasy",
     "slug": "sleep-easy-app",
     "scheme": "sleep-easy-app",
-    "version": "1.2.5",
+    "version": "1.2.7",
     "orientation": "portrait",
     "icon": "./assets/sleepeasylogo-android.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/sleepeasylogo-android.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },

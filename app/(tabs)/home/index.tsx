@@ -23,6 +23,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useTheme } from "../../../theme/ThemeProvider";
 import { useTranslation } from "react-i18next";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { DeviceItem, useO2Ring } from "../../../service/O2RingProvider";
 import Constants from "expo-constants";
 import LivePpgWave from "../../../components/live/LivePpgWave";
@@ -242,54 +243,47 @@ export default function Home() {
    */
   useFocusEffect(
     useCallback(() => {
-      // Start or stop scanning based on connection state; avoid depending on isScanning to prevent setState loops
+      // Start or stop scanning based on connection state
       if (!connectedDevice) {
         startScan();
       } else {
         stopScan();
-      }
-
-      if (!connectedDevice || !isRealtimeReady) {
-        return () => {
-          stopScan();
-        };
-      }
-
-      // call once immediately when screen is focused
-      refreshRealtimeRef.current();
-
-      // then keep calling every 1 second
-      const intervalId = setInterval(() => {
         refreshRealtimeRef.current();
-      }, 1000);
+      }
 
-      // clean up when leaving the screen or losing focus
       return () => {
-        clearInterval(intervalId);
         stopScan();
       };
-    }, [connectedDevice, isRealtimeReady, startScan, stopScan])
+    }, [connectedDevice, startScan, stopScan])
   );
+
+  const isValidSpo2 = (v: number) => v >= 20 && v <= 100;
+  const spo2Series = useReadingSeries(spo2, realtimeUpdatedAt, isValidSpo2, connectedDevice?.mac);
+  const isValidPr = (v: number) => v >= 20 && v <= 250;
+  const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac);
+  const isSignalActive = spo2 != null && spo2 >= 20 && pr != null && pr >= 20;
+  const isBpValid = isSignalActive && sbp != null && dbp != null && sbp >= 30 && dbp >= 30;
+  const activeSbp = isBpValid ? Math.max(sbp, dbp) : null;
+  const activeDbp = isBpValid ? Math.min(sbp, dbp) : null;
+
+  const sbpSeries = useReadingSeries(activeSbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
+  const dbpSeries = useReadingSeries(dbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
+  const isValidMotion = (v: number) => v >= 15 && v <= 255;
+  const filteredMotion = motion != null && motion >= 15 ? motion : 0;
+  const motionSeries = useReadingSeries(filteredMotion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac);
+  const rrValue = isSignalActive && pr != null && pr > 0 ? Math.max(10, Math.min(30, Math.round(pr / 4))) : null;
+  const isValidRr = (v: number) => v >= 5 && v <= 60;
+  const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac);
 
   const displaySpo2 =
     spo2 == null || spo2 < 20 || spo2 > 100 ? "--" : `${spo2}`;
 
   const displayPr = pr == null || pr < 20 || pr > 250 ? "--" : `${pr}`;
 
-  const displaySbp = sbp == null || sbp < 30 || sbp > 250 ? "--" : `${sbp}`;
-  const displayDbp = dbp == null || dbp < 20 || dbp > 200 ? "--" : `${dbp}`;
+  const displaySbp = !isSignalActive || sbp == null || dbp == null || sbp < 30 || dbp < 20 ? "--" : `${Math.max(sbp, dbp)}`;
+  const displayDbp = !isSignalActive || sbp == null || dbp == null || sbp < 30 || dbp < 20 ? "--" : `${Math.min(sbp, dbp)}`;
 
-  // rolling history for the charts; a new connection starts a new chart
-  const spo2Series = useReadingSeries(spo2, realtimeUpdatedAt, isValidSpo2, connectedDevice?.mac);
-  const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac);
-  const sbpSeries = useReadingSeries(sbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
-  const dbpSeries = useReadingSeries(dbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
-  const isValidMotion = (v: number) => v >= 0 && v <= 100;
-  const motionSeries = useReadingSeries(motion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac);
-  const displayMotion = motion == null ? "--" : `${motion}`;
-  const rrValue = pr != null && pr > 0 ? Math.max(10, Math.min(30, Math.round(pr / 4))) : null;
-  const isValidRr = (v: number) => v >= 5 && v <= 60;
-  const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac);
+  const displayMotion = filteredMotion === 0 ? "0" : `${filteredMotion}`;
   const displayRr = rrValue == null ? "--" : `${rrValue}`;
   const batterySegments = useMemo(() => {
     if (battery == null || battery < 0 || battery > 100) {
@@ -308,6 +302,13 @@ export default function Home() {
         return "battery";
     }
   }, [batteryState]);
+
+  const batteryColor = useMemo(() => {
+    if (batterySegments == null) return C.tint;
+    if (batterySegments >= 4) return "#5BD68A";
+    if (batterySegments >= 2) return "#F5A25D";
+    return "#E74C3C";
+  }, [batterySegments, C.tint]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={["top", "left", "right"]}>
@@ -496,11 +497,11 @@ export default function Home() {
                     />
                   </View>
                 </Pressable>
-                <View style={{ marginLeft: 12, flex: 1, flexShrink: 1 }}>
-                  <Text style={[F.buttonText, { color: C.text }]}>
+                <View style={{ marginLeft: 10, flex: 1, flexShrink: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.text }} numberOfLines={1} adjustsFontSizeToFit>
                     {getDisplayName(connectedDevice?.name, connectedDevice?.model)}
                   </Text>
-                  <Text style={[F.buttonText, { color: C.text }]}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: C.tint, marginTop: 2 }}>
                     {t("connected")}
                   </Text>
                 </View>
@@ -509,12 +510,12 @@ export default function Home() {
               <View
                 style={[
                   styles.batteryChip,
-                  { borderColor: C.border, backgroundColor: C.bg2 },
+                  { borderColor: batteryColor, backgroundColor: C.bg2 },
                 ]}>
                 <MaterialCommunityIcons
                   name={batteryIconName}
                   size={22}
-                  color={C.text}
+                  color={batteryColor}
                 />
                 {batterySegments == null ? (
                   <Text style={[styles.batteryText, { color: C.tint }]}>
@@ -530,9 +531,9 @@ export default function Home() {
                           {
                             marginLeft: idx === 0 ? 0 : 3,
                             backgroundColor:
-                              idx < batterySegments ? C.tint : "transparent",
-                            borderColor: C.border,
-                            opacity: idx < batterySegments ? 1 : 0.35,
+                              idx < batterySegments ? batteryColor : "transparent",
+                            borderColor: batteryColor,
+                            opacity: idx < batterySegments ? 1 : 0.3,
                           },
                         ]}
                       />
@@ -568,7 +569,7 @@ export default function Home() {
                 { borderColor: C.border, backgroundColor: C.bg2, paddingHorizontal: 12, paddingVertical: 5 },
               ]}>
               <Text style={{ fontSize: 12, fontWeight: "700", color: GREEN }}>
-                PI: {pi != null ? pi.toFixed(1) : "0.0"}%
+                PI: {isSignalActive && pi != null ? `${pi.toFixed(1)}%` : "--"}
               </Text>
             </View>
           </View>
@@ -624,7 +625,7 @@ export default function Home() {
 
                 {visibleCharts.rr && (
                   <LiveTrendChart
-                    title="Respiratory Rate"
+                    title="Resp. Rate"
                     unit="bpm"
                     currentLabel={displayRr}
                     avgLabel={t("avg")}
@@ -635,6 +636,7 @@ export default function Home() {
                     bands={[{ value: 40, color: C.tint }, { value: 5, color: C.tint }]}
                     accent={C.tint}
                     height={38}
+                    windowMs={30000}
                   />
                 )}
 
@@ -716,7 +718,7 @@ export default function Home() {
                     {visibleCharts.rr && (
                       <View style={styles.gridCol}>
                         <LiveTrendChart
-                          title="Respiratory Rate"
+                          title="Resp. Rate"
                           unit="bpm"
                           currentLabel={displayRr}
                           avgLabel={t("avg")}
@@ -727,6 +729,7 @@ export default function Home() {
                           bands={[{ value: 40, color: C.tint }, { value: 5, color: C.tint }]}
                           accent={C.tint}
                           height={48}
+                          windowMs={30000}
                         />
                       </View>
                     )}
@@ -787,7 +790,7 @@ export default function Home() {
             <Text style={[F.buttonText]}>{t("connectDevice")}</Text>
           </TouchableOpacity>
           <Text style={{ color: C.sub, fontSize: 12, marginTop: 8 }}>
-            v{Constants.expoConfig?.version ?? "1.2.5"}
+            v{Constants.expoConfig?.version ?? "1.2.7"}
           </Text>
         </View>
       )}

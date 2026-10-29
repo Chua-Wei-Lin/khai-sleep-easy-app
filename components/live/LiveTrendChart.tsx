@@ -28,6 +28,7 @@ type Props = {
   accent: string; // colour of the average
   height?: number;
   extraLabel?: string;
+  windowMs?: number; // custom rolling window duration (default 2 mins)
 };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -49,6 +50,7 @@ export default function LiveTrendChart({
   accent,
   height = 28,
   extraLabel,
+  windowMs = 2 * 60 * 1000,
 }: Props) {
   const { colors: C } = useTheme();
   const [width, setWidth] = useState(0);
@@ -58,31 +60,31 @@ export default function LiveTrendChart({
   const onLayout = (e: LayoutChangeEvent) =>
     setWidth(Math.round(e.nativeEvent.layout.width));
 
+  const safePoints = points ?? [];
+
   const { path, areaPath, t0, tN, lastPointCoord } = useMemo(() => {
-    if (!width || points.length === 0) return { path: "", areaPath: "", t0: 0, tN: 0, lastPointCoord: null };
-    const windowMs = 2 * 60 * 1000; // 2-minute rolling window
-    const first = points[0].t;
-    const last = points[points.length - 1].t;
-    const span = Math.max(last - first, windowMs); // starts at left edge and progresses right over 2 minutes
+    if (!width || safePoints.length === 0) return { path: "", areaPath: "", t0: 0, tN: 0, lastPointCoord: null };
+    const first = safePoints[0].t;
+    const last = safePoints[safePoints.length - 1].t;
+    const span = Math.max(last - first, windowMs); // progress over specified windowMs
 
     let dLine = "";
     let dArea = "";
     let subStartX = 0;
     let prevX = 0;
     let prevY = 0;
-    let prevT = -Infinity;
     let inSub = false;
 
-    if (points.length === 1) {
-      const v = Math.min(max, Math.max(min, points[0].v));
+    if (safePoints.length === 1) {
+      const v = Math.min(max, Math.max(min, safePoints[0].v));
       const y = ((max - v) / (max - min)) * height;
       dLine = `M0 ${y.toFixed(1)} L${width.toFixed(1)} ${y.toFixed(1)}`;
       dArea = `M0 ${y.toFixed(1)} L${width.toFixed(1)} ${y.toFixed(1)} L${width.toFixed(1)} ${height} L0 ${height} Z`;
       return { path: dLine, areaPath: dArea, t0: first, tN: last, lastPointCoord: { x: width, y } };
     }
 
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
+    for (let i = 0; i < safePoints.length; i++) {
+      const p = safePoints[i];
       const v = Math.min(max, Math.max(min, p.v));
       const x = ((p.t - first) / span) * width;
       const y = ((max - v) / (max - min)) * height;
@@ -92,20 +94,11 @@ export default function LiveTrendChart({
         dArea += `M${x.toFixed(1)} ${y.toFixed(1)}`;
         subStartX = x;
         inSub = true;
-      } else if (p.t - prevT > 10000) {
-        // Close curtain polygon for previous segment straight down to bottom baseline
-        dArea += ` L${prevX.toFixed(1)} ${height} L${subStartX.toFixed(1)} ${height} Z`;
-
-        // Start new segment
-        dLine += ` M${x.toFixed(1)} ${y.toFixed(1)}`;
-        dArea += ` M${x.toFixed(1)} ${y.toFixed(1)}`;
-        subStartX = x;
       } else {
         dLine += ` L${x.toFixed(1)} ${y.toFixed(1)}`;
         dArea += ` L${x.toFixed(1)} ${y.toFixed(1)}`;
       }
 
-      prevT = p.t;
       prevX = x;
       prevY = y;
     }
@@ -115,7 +108,7 @@ export default function LiveTrendChart({
     }
 
     return { path: dLine, areaPath: dArea, t0: first, tN: last, lastPointCoord: inSub ? { x: prevX, y: prevY } : null };
-  }, [points, width, min, max, height]);
+  }, [safePoints, width, min, max, height, windowMs]);
 
   const stops = useMemo(
     () =>
@@ -134,10 +127,12 @@ export default function LiveTrendChart({
       accessible
       accessibilityLabel={`${title}: ${currentLabel} ${unit}`}>
       <View style={styles.headRow}>
-        <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>{title}</Text>
-        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6, flexShrink: 1 }}>
-          {extraLabel && <Text style={{ fontSize: 13, fontWeight: "700", color: "#5BD68A" }} numberOfLines={1}>{extraLabel}</Text>}
-          <Text style={[styles.currentInline, { color: C.tint }]} numberOfLines={1} adjustsFontSizeToFit>
+        <Text style={[styles.title, { color: C.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+          {title}
+        </Text>
+        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, flexShrink: 0 }}>
+          {extraLabel && <Text style={{ fontSize: 11, fontWeight: "700", color: "#5BD68A" }} numberOfLines={1}>{extraLabel}</Text>}
+          <Text style={[styles.currentInline, { color: C.tint }]} numberOfLines={1}>
             {currentLabel} <Text style={styles.unitInline}>{unit}</Text>
           </Text>
         </View>
@@ -231,10 +226,10 @@ export default function LiveTrendChart({
 
       <View style={styles.timeRow}>
         <Text style={[styles.time, { color: C.sub }]}>
-          {points.length > 0 ? clock(t0) : ""}
+          {safePoints.length > 0 ? clock(t0) : ""}
         </Text>
         <Text style={[styles.time, { color: C.sub }]}>
-          {points.length > 0 ? clock(tN) : ""}
+          {safePoints.length > 0 ? clock(tN) : ""}
         </Text>
       </View>
     </View>
@@ -253,17 +248,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "baseline",
     marginBottom: 2,
+    gap: 4,
   },
   title: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "700",
+    flexShrink: 1,
   },
   currentInline: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "700",
+    flexShrink: 0,
   },
   unitInline: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "600",
   },
   timeRow: {

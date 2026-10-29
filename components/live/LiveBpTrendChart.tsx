@@ -12,6 +12,7 @@ type Props = {
   sbpPoints: SeriesPoint[];
   dbpPoints: SeriesPoint[];
   height?: number;
+  extraHeaderLabel?: string;
 };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -28,6 +29,7 @@ export default function LiveBpTrendChart({
   sbpPoints,
   dbpPoints,
   height = 28,
+  extraHeaderLabel,
 }: Props) {
   const { colors: C } = useTheme();
   const [width, setWidth] = useState(0);
@@ -39,55 +41,77 @@ export default function LiveBpTrendChart({
   const max = 200;
   const ticks = [200, 160, 120, 80, 40];
 
+  const rawSbp = sbpPoints ?? [];
+  const rawDbp = dbpPoints ?? [];
+
+  // Synchronize ending timestamps so DBP never trails past SBP when signal stops
+  const maxSbpT = rawSbp.length > 0 ? rawSbp[rawSbp.length - 1].t : 0;
+  const maxDbpT = rawDbp.length > 0 ? rawDbp[rawDbp.length - 1].t : 0;
+  const minLastT = maxSbpT > 0 && maxDbpT > 0 ? Math.min(maxSbpT, maxDbpT) : Math.max(maxSbpT, maxDbpT);
+
+  const safeSbp = useMemo(() => (minLastT > 0 ? rawSbp.filter((p) => p.t <= minLastT) : rawSbp), [rawSbp, minLastT]);
+  const safeDbp = useMemo(() => (minLastT > 0 ? rawDbp.filter((p) => p.t <= minLastT) : rawDbp), [rawDbp, minLastT]);
+
+  // Common time boundaries for 100% synchronized X-axis positioning
+  const commonT0 = useMemo(() => {
+    const minSbp = safeSbp.length > 0 ? safeSbp[0].t : Infinity;
+    const minDbp = safeDbp.length > 0 ? safeDbp[0].t : Infinity;
+    const m = Math.min(minSbp, minDbp);
+    return m === Infinity ? 0 : m;
+  }, [safeSbp, safeDbp]);
+
+  const commonTN = useMemo(() => {
+    const maxSbp = safeSbp.length > 0 ? safeSbp[safeSbp.length - 1].t : 0;
+    const maxDbp = safeDbp.length > 0 ? safeDbp[safeDbp.length - 1].t : 0;
+    return Math.max(maxSbp, maxDbp);
+  }, [safeSbp, safeDbp]);
+
+  const commonSpan = useMemo(() => {
+    const windowMs = 2 * 60 * 1000;
+    return Math.max(commonTN - commonT0, windowMs);
+  }, [commonT0, commonTN]);
+
   const buildPath = (points: SeriesPoint[]) => {
-    if (!width || points.length === 0) return { path: "", t0: 0, tN: 0, lastPointCoord: null };
-    const windowMs = 2 * 60 * 1000; // 2-minute rolling window
-    const first = points[0].t;
-    const last = points[points.length - 1].t;
-    const span = Math.max(last - first, windowMs); // starts at left edge and progresses right over 2 minutes
+    const safePts = points ?? [];
+    if (!width || safePts.length === 0 || commonSpan <= 0) return { path: "", lastPointCoord: null };
     const maxPts = Math.max(20, Math.floor(width / 2));
-    const step = Math.max(1, Math.ceil(points.length / maxPts));
-    const gapMs = Math.max(5000, step * 2000);
+    const step = Math.max(1, Math.ceil(safePts.length / maxPts));
     let d = "";
-    let prevT = -Infinity;
     let lastX = 0;
     let lastY = 0;
 
-    for (let i = 0; i < points.length; i += step) {
-      const end = Math.min(points.length, i + step);
+    for (let i = 0; i < safePts.length; i += step) {
+      const end = Math.min(safePts.length, i + step);
       let sum = 0;
-      for (let k = i; k < end; k++) sum += points[k].v;
+      for (let k = i; k < end; k++) sum += safePts[k].v;
       const v = Math.min(max, Math.max(min, sum / (end - i)));
-      const t = points[Math.floor((i + end - 1) / 2)].t;
-      const x = ((t - first) / span) * width;
+      const t = safePts[Math.floor((i + end - 1) / 2)].t;
+      const x = ((t - commonT0) / commonSpan) * width;
       const y = ((max - v) / (max - min)) * height;
       if (d === "") {
         d += `M${x.toFixed(1)} ${y.toFixed(1)}`;
-      } else if (t - prevT > gapMs) {
-        d += ` M${x.toFixed(1)} ${y.toFixed(1)}`;
       } else {
         d += ` L${x.toFixed(1)} ${y.toFixed(1)}`;
       }
-      prevT = t;
       lastX = x;
       lastY = y;
     }
-    return { path: d, t0: first, tN: last, lastPointCoord: { x: lastX, y: lastY } };
+    return { path: d, lastPointCoord: { x: lastX, y: lastY } };
   };
 
-  const sbpResult = useMemo(() => buildPath(sbpPoints), [sbpPoints, width, height]);
-  const dbpResult = useMemo(() => buildPath(dbpPoints), [dbpPoints, width, height]);
-
-  const t0 = sbpPoints.length > 0 ? sbpPoints[0].t : dbpPoints.length > 0 ? dbpPoints[0].t : 0;
-  const tN = sbpPoints.length > 0 ? sbpPoints[sbpPoints.length - 1].t : dbpPoints.length > 0 ? dbpPoints[dbpPoints.length - 1].t : 0;
+  const sbpResult = useMemo(() => buildPath(safeSbp), [safeSbp, width, height, commonT0, commonSpan]);
+  const dbpResult = useMemo(() => buildPath(safeDbp), [safeDbp, width, height, commonT0, commonSpan]);
 
   return (
     <View style={[styles.card, { backgroundColor: C.bg2, borderColor: C.border }]}>
       <View style={styles.headRow}>
-        <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>{title}</Text>
+        <Text style={[styles.title, { color: C.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+          {title}
+        </Text>
         <View style={styles.legendRow}>
-          <Text style={[styles.legendText, { color: "#E74C3C" }]} numberOfLines={1} adjustsFontSizeToFit>S:{currentSbp}</Text>
-          <Text style={[styles.legendText, { color: "#3498DB" }]} numberOfLines={1} adjustsFontSizeToFit> D:{currentDbp}</Text>
+          {extraHeaderLabel && <Text style={[styles.legendText, { color: "#5BD68A", marginRight: 4 }]} numberOfLines={1}>{extraHeaderLabel}</Text>}
+          <Text style={[styles.legendText, { color: "#E74C3C" }]} numberOfLines={1}>S:{currentSbp}</Text>
+          <Text style={[styles.legendText, { color: "#3498DB" }]} numberOfLines={1}> D:{currentDbp}</Text>
         </View>
       </View>
 
@@ -169,8 +193,8 @@ export default function LiveBpTrendChart({
       </View>
 
       <View style={styles.timeRow}>
-        <Text style={[styles.time, { color: C.sub }]}>{t0 ? clock(t0) : ""}</Text>
-        <Text style={[styles.time, { color: C.sub }]}>{tN ? clock(tN) : ""}</Text>
+        <Text style={[styles.time, { color: C.sub }]}>{commonT0 ? clock(commonT0) : ""}</Text>
+        <Text style={[styles.time, { color: C.sub }]}>{commonTN ? clock(commonTN) : ""}</Text>
       </View>
     </View>
   );
@@ -188,18 +212,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 2,
+    gap: 4,
   },
   title: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 11,
+    fontWeight: "700",
+    flexShrink: 1,
   },
   legendRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexShrink: 0,
   },
   legendText: {
-    fontSize: 11,
-    fontWeight: "600",
+    fontSize: 10,
+    fontWeight: "700",
   },
   timeRow: {
     flexDirection: "row",
