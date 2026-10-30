@@ -42,6 +42,39 @@ export default function SettingsStack() {
           title: t("notification"),
         }}
       />
+      <Stack.Screen
+        name="PpgHz"
+        options={{
+          headerBackTitle: "Back",
+          headerShown: true,
+          headerStyle: { backgroundColor: C.bg },
+          headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
+          headerTintColor: C.text,
+          title: "PPG Sampling Rate",
+        }}
+      />
+      <Stack.Screen
+        name="ChartVisibility"
+        options={{
+          headerBackTitle: "Back",
+          headerShown: true,
+          headerStyle: { backgroundColor: C.bg },
+          headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
+          headerTintColor: C.text,
+          title: "Customize Dashboard Charts",
+        }}
+      />
+      <Stack.Screen
+        name="BpCalibration"
+        options={{
+          headerBackTitle: "Back",
+          headerShown: true,
+          headerStyle: { backgroundColor: C.bg },
+          headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
+          headerTintColor: C.text,
+          title: "Blood Pressure Calibration",
+        }}
+      />
     </Stack>
   );
 }

@@ -512,6 +512,16 @@ class ViatomModule : Module() {
             stopKeepAlive()
             true
         }
+
+        AsyncFunction("setBpCalibration") { sbp: Int, dbp: Int ->
+            try {
+                megaBp.setCalibrationNative(sbp, dbp)
+                ev("megaBp setCalibrationNative sbp=$sbp dbp=$dbp")
+            } catch (e: Exception) {
+                ev("setBpCalibration error: ${e.message}")
+            }
+            true
+        }
     }
 
     // --------------------------------
@@ -569,9 +579,7 @@ class ViatomModule : Module() {
         // 1. Real-time param data (SpO2, PR, PI, motion) - update lastMotion state only
         addObserver(InterfaceEvent.Oxy.EventOxyRtParamData, InterfaceEvent::class.java) { evt ->
             val d = evt.data as RtParam
-            if (d.vector >= 15) {
-                lastMotion = d.vector
-            }
+            lastMotion = if (d.vector >= 20) d.vector else 0
         }
 
         // 2. Device info (battery, state, file list)
@@ -712,8 +720,7 @@ class ViatomModule : Module() {
             val maxVal = wFs.maxOrNull() ?: 0
             val minVal = wFs.minOrNull() ?: 0
             val ac = (maxVal - minVal).toDouble()
-            val dc = wFs.average()
-            val motionVal = if (ac > 70.0) ((ac - 50.0) / 2.0).coerceIn(1.0, 100.0).toInt() else 0
+            val motionVal = if (lastMotion >= 20) lastMotion else if (ac >= 28.0) ((ac - 20.0) * 1.5).coerceIn(1.0, 100.0).toInt() else 0
 
             val rawPi = rtWave.pi.toDouble()
             val finalPi = if (rawPi > 0.0) (if (rawPi < 1.0) rawPi * 10.0 else if (rawPi <= 10.0) rawPi else rawPi / 10.0) else 2.5
@@ -730,12 +737,14 @@ class ViatomModule : Module() {
 
             ready?.let { emitter?.emit("onPpgChunkReady", it) }
 
+            val dcBaseline = wFs.average().toInt()
             var lastSbp = 120.0
             var lastDbp = 80.0
             try {
                 for (sample in wFs) {
-                    val bp = megaBp.stepNative(sample)
-                    if (bp != null && bp.size >= 2 && bp[0] > 0.0 && bp[1] > 0.0) {
+                    val acSample = sample - dcBaseline
+                    val bp = megaBp.stepNative(acSample)
+                    if (bp != null && bp.size >= 2 && bp[0] >= 50.0 && bp[1] >= 35.0) {
                         lastSbp = bp[0]
                         lastDbp = bp[1]
                     }

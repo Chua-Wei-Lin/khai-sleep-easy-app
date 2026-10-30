@@ -3,9 +3,12 @@ import SettingsList from "../../../components/SettingsList";
 import type { Card } from "../../../types/settings";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { useTheme } from "../../../theme/ThemeProvider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as O2Ring from "@ios-app/viatom-o2ring";
 
 export default function PpgHzScreen() {
+  const { colors: C } = useTheme();
   const { t } = useTranslation();
   const STORAGE_KEY = "ppg_sampling_hz";
 
@@ -20,6 +23,13 @@ export default function PpgHzScreen() {
   const selectHz = async (val: string) => {
     setHz(val);
     await AsyncStorage.setItem(STORAGE_KEY, val);
+    const hzNum = parseInt(val, 10) || 125;
+    try {
+      // @ts-ignore
+      if (O2Ring.setPpgSamplingRate) {
+        await O2Ring.setPpgSamplingRate(hzNum);
+      }
+    } catch {}
   };
 
   const cards: Card[] = useMemo(
@@ -59,7 +69,7 @@ export default function PpgHzScreen() {
   );
 
   return (
-    <SafeAreaView edges={["left", "right"]} style={{ flex: 1 }}>
+    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: C.bg }}>
       <SettingsList
         cards={cards}
         ctaFlag={{ enabled: false }}

@@ -32,6 +32,7 @@ import LiveBpTrendChart from "../../../components/live/LiveBpTrendChart";
 import LiveMotionBarChart from "../../../components/live/LiveMotionBarChart";
 import { useReadingSeries } from "../../../components/live/useReadingSeries";
 import HaemodynamicSummaryCard from "../../../components/live/HaemodynamicSummaryCard";
+import { calculateRespiratoryRate } from "../../../service/HaemodynamicCalculations";
 
 const isWatchDevice = (name?: string) => {
   const n = (name || "").toLowerCase();
@@ -268,10 +269,10 @@ export default function Home() {
 
   const sbpSeries = useReadingSeries(activeSbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
   const dbpSeries = useReadingSeries(dbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
-  const isValidMotion = (v: number) => v >= 15 && v <= 255;
-  const filteredMotion = motion != null && motion >= 15 ? motion : 0;
+  const isValidMotion = (v: number) => v >= 20 && v <= 255;
+  const filteredMotion = motion != null && motion >= 20 ? motion : 0;
   const motionSeries = useReadingSeries(filteredMotion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac);
-  const rrValue = isSignalActive && pr != null && pr > 0 ? Math.max(10, Math.min(30, Math.round(pr / 4))) : null;
+  const rrValue = isSignalActive && pr != null && pr > 0 ? calculateRespiratoryRate([pr]) : null;
   const isValidRr = (v: number) => v >= 5 && v <= 60;
   const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac);
 

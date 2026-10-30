@@ -6,7 +6,7 @@ import type { SeriesPoint } from "./useReadingSeries";
 
 type Props = {
   title: string;
-  currentLabel: string;
+  currentLabel?: string;
   points: SeriesPoint[];
   height?: number;
 };
@@ -19,7 +19,6 @@ const clock = (t: number) => {
 
 export default function LiveMotionBarChart({
   title,
-  currentLabel,
   points,
   height = 38,
 }: Props) {
@@ -40,9 +39,6 @@ export default function LiveMotionBarChart({
     <View style={[styles.card, { backgroundColor: C.bg2, borderColor: C.border }]}>
       <View style={styles.headRow}>
         <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>{title}</Text>
-        <Text style={[styles.currentInline, { color: accent }]} numberOfLines={1}>
-          {currentLabel}
-        </Text>
       </View>
 
       <View
@@ -126,10 +122,6 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 13,
-    fontWeight: "700",
-  },
-  currentInline: {
-    fontSize: 15,
     fontWeight: "700",
   },
   timeRow: {
