@@ -268,8 +268,8 @@ export default function Home() {
 
   const sbpSeries = useReadingSeries(activeSbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
   const dbpSeries = useReadingSeries(dbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
-  const isValidMotion = (v: number) => v >= 15 && v <= 255;
-  const filteredMotion = motion != null && motion >= 15 ? motion : 0;
+  const isValidMotion = (v: number) => v >= 20 && v <= 255;
+  const filteredMotion = motion != null && motion >= 20 ? motion : 0;
   const motionSeries = useReadingSeries(filteredMotion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac);
   const rrValue = isSignalActive && pr != null && pr > 0 ? Math.max(10, Math.min(30, Math.round(pr / 4))) : null;
   const isValidRr = (v: number) => v >= 5 && v <= 60;

@@ -131,7 +131,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const totalFilesToDownload = React.useRef(0);
   const downloadedFiles = React.useRef(0);
   const nativeUploadRef = useRef(false);
-  const rawBase = API_DEV || "http://192.168.1.5/SleepEasy/ApiBackend";
+  const rawBase = API_DEV || "http://192.168.68.80/SleepEasy/ApiBackend";
   const baseURL = rawBase?.replace(/\/+$/, "");
 
   // -------------------
