@@ -523,22 +523,29 @@ export default function Home() {
                     --
                   </Text>
                 ) : (
-                  <View style={styles.batteryBlocks}>
-                    {Array.from({ length: 5 }).map((_, idx) => (
-                      <View
-                        key={idx}
-                        style={[
-                          styles.batteryBlock,
-                          {
-                            marginLeft: idx === 0 ? 0 : 3,
-                            backgroundColor:
-                              idx < batterySegments ? batteryColor : "transparent",
-                            borderColor: batteryColor,
-                            opacity: idx < batterySegments ? 1 : 0.3,
-                          },
-                        ]}
-                      />
-                    ))}
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <View style={styles.batteryBlocks}>
+                      {Array.from({ length: 5 }).map((_, idx) => (
+                        <View
+                          key={idx}
+                          style={[
+                            styles.batteryBlock,
+                            {
+                              marginLeft: idx === 0 ? 0 : 3,
+                              backgroundColor:
+                                idx < batterySegments ? batteryColor : "transparent",
+                              borderColor: batteryColor,
+                              opacity: idx < batterySegments ? 1 : 0.3,
+                            },
+                          ]}
+                        />
+                      ))}
+                    </View>
+                    {battery != null && (
+                      <Text style={[styles.batteryText, { color: batteryColor, marginLeft: 6, fontSize: 12, fontWeight: "700" }]}>
+                        {battery}%
+                      </Text>
+                    )}
                   </View>
                 )}
               </View>
