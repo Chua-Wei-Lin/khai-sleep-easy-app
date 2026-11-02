@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../../theme/ThemeProvider";
+import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as O2Ring from "@ios-app/viatom-o2ring";
 
@@ -9,6 +10,7 @@ export const BP_CALIBRATION_KEY = "settings:bp_calibration";
 
 export default function BpCalibrationScreen() {
   const { colors: C, fonts: F } = useTheme();
+  const router = useRouter();
   const [sbp, setSbp] = useState("120.0");
   const [dbp, setDbp] = useState("80.0");
 
@@ -32,7 +34,7 @@ export default function BpCalibrationScreen() {
       return;
     }
 
-    const payload = { sbp: sbpNum, dbp: dbpNum };
+    const payload = { sbp: sbpNum, dbp: dbpNum, calibrationTime: Date.now() };
     await AsyncStorage.setItem(BP_CALIBRATION_KEY, JSON.stringify(payload));
     try {
       // @ts-ignore
@@ -41,7 +43,7 @@ export default function BpCalibrationScreen() {
       }
     } catch {}
 
-    Alert.alert("Success", "Baseline blood pressure calibration saved successfully.");
+    router.replace("/(tabs)/home");
   };
 
   return (
@@ -95,5 +97,5 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 10 },
   label: { fontSize: 11, fontWeight: "700", marginBottom: 4 },
   input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 8, fontSize: 13, fontWeight: "600" },
-  button: { marginTop: 2, height: 40, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  button: { marginTop: 4, height: 40, borderRadius: 8, alignItems: "center", justifyContent: "center" },
 });

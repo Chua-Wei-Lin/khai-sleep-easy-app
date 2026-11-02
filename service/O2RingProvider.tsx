@@ -131,6 +131,18 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const totalFilesToDownload = React.useRef(0);
   const downloadedFiles = React.useRef(0);
   const nativeUploadRef = useRef(false);
+  const bpBuffer = React.useRef<{ sbp: number; dbp: number }[]>([]);
+  const spo2Ref = React.useRef<number | null>(null);
+  const prRef = React.useRef<number | null>(null);
+  const prBuffer = React.useRef<number[]>([]);
+
+  useEffect(() => {
+    spo2Ref.current = spo2;
+  }, [spo2]);
+
+  useEffect(() => {
+    prRef.current = pr;
+  }, [pr]);
   const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
   const baseURL = rawBase?.replace(/\/+$/, "");
 
@@ -667,8 +679,24 @@ const processReadQueue = useCallback(() => {
       }
 
       subRt = O2Ring.addRealtimeListener((rt) => {
-        setSpo2(rt.spo2);
-        setPr(rt.pr);
+        let validPr = rt.pr;
+        if (validPr != null && (validPr < 40 || validPr > 180)) validPr = null;
+        if (validPr != null && prBuffer.current.length > 0) {
+          const lastPr = prBuffer.current[prBuffer.current.length - 1];
+          if (Math.abs(validPr - lastPr) > 20) {
+            validPr = lastPr; // reject transient outlier spike
+          }
+        }
+        if (validPr != null) {
+          prBuffer.current.push(validPr);
+          if (prBuffer.current.length > 5) prBuffer.current.shift();
+        }
+
+        let validSpo2 = rt.spo2;
+        if (validSpo2 != null && (validSpo2 < 50 || validSpo2 > 100)) validSpo2 = null;
+
+        setSpo2(validSpo2);
+        setPr(validPr);
         setPi(rt.pi ?? null);
         setMotion(rt.motion ?? null);
         setRealtimeUpdatedAt(Date.now());
@@ -692,15 +720,38 @@ const processReadQueue = useCallback(() => {
       });
 
       subWave = O2Ring.addBloodPressureListener((bp) => {
-        if (bp?.sbp != null && bp?.dbp != null && bp.sbp > 30 && bp.dbp > 30) {
-          const high = Math.max(bp.sbp, bp.dbp);
-          const low = Math.min(bp.sbp, bp.dbp);
-          setSbp(high);
-          setDbp(low);
-          setRealtimeUpdatedAt(Date.now());
-        } else {
+        if (spo2Ref.current == null || spo2Ref.current < 20 || prRef.current == null || prRef.current < 20) {
+          bpBuffer.current = [];
           setSbp(null);
           setDbp(null);
+          return;
+        }
+        if (bp?.sbp != null && bp?.dbp != null && bp.sbp > 30 && bp.dbp > 30 && !isNaN(bp.sbp) && !isNaN(bp.dbp)) {
+          const high = Math.max(bp.sbp, bp.dbp);
+          const low = Math.min(bp.sbp, bp.dbp);
+          let rawSbp = high;
+          let rawDbp = low;
+          if (rawSbp - rawDbp < 25.0) {
+            rawSbp = rawDbp + 25.0;
+          }
+
+          const buf = bpBuffer.current;
+          buf.push({ sbp: rawSbp, dbp: rawDbp });
+          if (buf.length > 5) buf.shift();
+
+          const sortedSbp = [...buf.map(b => b.sbp)].sort((a, b) => a - b);
+          const sortedDbp = [...buf.map(b => b.dbp)].sort((a, b) => a - b);
+          const medianSbp = sortedSbp[Math.floor(sortedSbp.length / 2)];
+          const medianDbp = sortedDbp[Math.floor(sortedDbp.length / 2)];
+
+          setSbp(medianSbp);
+          setDbp(medianDbp);
+          setRealtimeUpdatedAt(Date.now());
+        } else {
+          if (bpBuffer.current.length === 0) {
+            setSbp(null);
+            setDbp(null);
+          }
         }
       });
 

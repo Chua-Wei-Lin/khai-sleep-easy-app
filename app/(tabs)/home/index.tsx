@@ -32,6 +32,8 @@ import LiveBpTrendChart from "../../../components/live/LiveBpTrendChart";
 import LiveMotionBarChart from "../../../components/live/LiveMotionBarChart";
 import { useReadingSeries } from "../../../components/live/useReadingSeries";
 import HaemodynamicSummaryCard from "../../../components/live/HaemodynamicSummaryCard";
+import { calculateRespiratoryRate } from "../../../service/HaemodynamicCalculations";
+import { BP_CALIBRATION_KEY } from "../settings/BpCalibration";
 
 const isWatchDevice = (name?: string) => {
   const n = (name || "").toLowerCase();
@@ -218,6 +220,23 @@ export default function Home() {
     clearOfflineDevice();
     router.push("/(tabs)/home/Scan");
   };
+
+  const [calibrationTime, setCalibrationTime] = useState<number | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem(BP_CALIBRATION_KEY).then((stored) => {
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (parsed.calibrationTime != null) {
+              setCalibrationTime(parsed.calibrationTime);
+            }
+          } catch {}
+        }
+      }).catch(() => {});
+    }, [])
+  );
 
   // When opening the known devices menu, run a scan so we can flag online/offline status.
   useEffect(() => {
@@ -627,6 +646,7 @@ export default function Home() {
                     sbpPoints={sbpSeries}
                     dbpPoints={dbpSeries}
                     height={38}
+                    calibrationTime={calibrationTime}
                   />
                 )}
 
@@ -697,6 +717,7 @@ export default function Home() {
                           sbpPoints={sbpSeries}
                           dbpPoints={dbpSeries}
                           height={48}
+                          calibrationTime={calibrationTime}
                         />
                       </View>
                     )}

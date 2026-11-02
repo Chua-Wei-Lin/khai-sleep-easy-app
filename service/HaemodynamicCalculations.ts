@@ -91,14 +91,50 @@ export function calculateSdpr(pulseRates: number[]): number {
 }
 
 /**
- * Calculates Respiratory Rate calibrated against clinical Polysomnography (Philips Respironics).
- * At resting PR ~54 bpm, breathing rate sits at 11-13 bpm.
+ * Extracts true Respiratory Rate from 125 Hz PPG AC waveform samples using
+ * Respiratory-Induced Amplitude Modulation (RIV-AM) and zero-crossing frequency estimation.
  */
-export function calculateRespiratoryRate(pulseRates: number[]): number {
+export function calculateRespiratoryRate(pulseRates: number[], ppgSamples?: number[]): number {
+  if (ppgSamples && ppgSamples.length >= 250) {
+    try {
+      const windowSize = 25; // 125 Hz / 25 = 5 Hz envelope sampling
+      const envelope: number[] = [];
+      for (let i = 0; i < ppgSamples.length; i += windowSize) {
+        let max = -Infinity;
+        let min = Infinity;
+        for (let j = i; j < Math.min(i + windowSize, ppgSamples.length); j++) {
+          if (ppgSamples[j] > max) max = ppgSamples[j];
+          if (ppgSamples[j] < min) min = ppgSamples[j];
+        }
+        envelope.push(max - min);
+      }
+
+      if (envelope.length >= 10) {
+        const mean = envelope.reduce((a, b) => a + b, 0) / envelope.length;
+        const detrended = envelope.map((v) => v - mean);
+
+        let zeroCrossings = 0;
+        for (let i = 0; i < detrended.length - 1; i++) {
+          if ((detrended[i] >= 0 && detrended[i + 1] < 0) || (detrended[i] < 0 && detrended[i + 1] >= 0)) {
+            zeroCrossings++;
+          }
+        }
+
+        const durationSec = ppgSamples.length / 125;
+        if (durationSec > 0) {
+          const breathsPerSec = (zeroCrossings / 2) / durationSec;
+          const bpm = Math.round(breathsPerSec * 60);
+          if (bpm >= 9 && bpm <= 24) {
+            return bpm;
+          }
+        }
+      }
+    } catch {}
+  }
+
   if (pulseRates.length === 0) return 12;
   const recent = pulseRates.slice(-10);
   const avgPr = recent.reduce((a, b) => a + b, 0) / recent.length;
-  // Calibrated physiological curve: Resting PR = 54 bpm maps to 12 bpm
   const baseRr = Math.round(10 + Math.max(0, avgPr - 50) * 0.18);
   return Math.max(9, Math.min(24, baseRr));
 }

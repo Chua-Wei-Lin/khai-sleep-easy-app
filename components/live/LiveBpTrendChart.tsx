@@ -13,6 +13,7 @@ type Props = {
   dbpPoints: SeriesPoint[];
   height?: number;
   extraHeaderLabel?: string;
+  calibrationTime?: number | null;
 };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -30,6 +31,7 @@ export default function LiveBpTrendChart({
   dbpPoints,
   height = 28,
   extraHeaderLabel,
+  calibrationTime,
 }: Props) {
   const { colors: C } = useTheme();
   const [width, setWidth] = useState(0);
@@ -70,6 +72,12 @@ export default function LiveBpTrendChart({
     const windowMs = 2 * 60 * 1000;
     return Math.max(commonTN - commonT0, windowMs);
   }, [commonT0, commonTN]);
+
+  const calibrationX = useMemo(() => {
+    if (calibrationTime == null || calibrationTime <= 0 || commonSpan <= 0 || width <= 0 || commonT0 <= 0 || commonTN <= 0) return null;
+    if (calibrationTime < commonT0 || calibrationTime > commonTN) return null;
+    return ((calibrationTime - commonT0) / commonSpan) * width;
+  }, [calibrationTime, commonT0, commonTN, commonSpan, width]);
 
   const buildPath = (points: SeriesPoint[]) => {
     const safePts = points ?? [];
@@ -148,6 +156,17 @@ export default function LiveBpTrendChart({
                 </React.Fragment>
               );
             })}
+            {calibrationTime != null && calibrationTime > 0 && calibrationX != null && calibrationX >= 0 && calibrationX <= width && (
+              <Line
+                x1={calibrationX}
+                x2={calibrationX}
+                y1={0}
+                y2={height}
+                stroke="#F5A25D"
+                strokeWidth={2}
+                strokeDasharray="3,3"
+              />
+            )}
             {sbpResult.path !== "" && (
               <Path
                 d={sbpResult.path}
