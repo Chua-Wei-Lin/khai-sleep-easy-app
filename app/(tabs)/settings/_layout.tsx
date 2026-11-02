@@ -7,39 +7,50 @@ export default function SettingsStack() {
   const { t } = useTranslation();
 
   return (
-    <Stack>
+    <Stack
+      screenOptions={{
+        headerShown: true,
+        headerBackTitle: "Back",
+        headerStyle: { backgroundColor: C.bg },
+        headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
+        headerTintColor: C.text,
+        contentStyle: { backgroundColor: C.bg },
+      }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen
         name="Profile"
         options={{
-          headerBackTitle: "Back",
-          headerShown: true,
-          headerStyle: { backgroundColor: C.bg },
-          headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
-          headerTintColor: C.text,
           title: t("patientProfile"),
         }}
       />
       <Stack.Screen
         name="Language"
         options={{
-          headerBackTitle: "Back",
-          headerShown: true,
-          headerStyle: { backgroundColor: C.bg },
-          headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
-          headerTintColor: C.text,
           title: t("language"),
         }}
       />
       <Stack.Screen
         name="Notification"
         options={{
-          headerBackTitle: "Back",
-          headerShown: true,
-          headerStyle: { backgroundColor: C.bg },
-          headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
-          headerTintColor: C.text,
           title: t("notification"),
+        }}
+      />
+      <Stack.Screen
+        name="PpgHz"
+        options={{
+          title: "PPG Sampling Rate",
+        }}
+      />
+      <Stack.Screen
+        name="ChartVisibility"
+        options={{
+          title: "Customize Dashboard Charts",
+        }}
+      />
+      <Stack.Screen
+        name="BpCalibration"
+        options={{
+          title: "Blood Pressure Calibration",
         }}
       />
     </Stack>
