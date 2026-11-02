@@ -94,13 +94,14 @@ function SettingsRow({
             style={{
               color: textValue ? C.text : C.sub,
               ...F.text,
+              fontSize: 12,
               fontWeight: "700",
             }}>
             {textValue || "Select date"}
           </Text>
         ) : (
           <>
-            <Text style={{ color: C.text, ...F.text }}>{title}</Text>
+            <Text style={{ color: C.text, ...F.text, fontSize: 12 }}>{title}</Text>
           </>
         )}
       </View>
@@ -136,8 +137,8 @@ export default SettingsRow;
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 57,
-    paddingHorizontal: 14,
+    minHeight: 46,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
   },

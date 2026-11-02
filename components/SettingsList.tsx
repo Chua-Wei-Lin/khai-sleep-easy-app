@@ -87,7 +87,7 @@ export default function SettingsList({
 
     if (item.kind === "section") {
       return (
-        <View style={{ paddingHorizontal: 20, marginTop: 4, marginBottom: 8 }}>
+        <View style={{ paddingHorizontal: 20, marginTop: 4, marginBottom: 4 }}>
           <Text style={{ color: C.sub, ...F.sectionLabel }}>{item.label}</Text>
         </View>
       );
@@ -171,10 +171,10 @@ export default function SettingsList({
     }
 
     if (item.kind === "spacer") {
-      return <View style={{ height: 12 }} />;
+      return <View style={{ height: 6 }} />;
     }
 
-    return <View style={{ height: 8 }} />;
+    return <View style={{ height: 4 }} />;
   };
 
   return (

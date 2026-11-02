@@ -45,9 +45,8 @@ export default function BpCalibrationScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: C.bg }]}>
-      <View style={{ padding: 20 }}>
-        <Text style={[styles.title, { color: C.text }]}>Blood Pressure Calibration</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: C.bg }]} edges={["bottom", "left", "right"]}>
+      <View style={{ padding: 12, paddingTop: 4 }}>
         <Text style={[styles.subtitle, { color: C.text, opacity: 0.85 }]}>
           Enter baseline blood pressure values measured from a standard arm cuff for personal calibration.
         </Text>
@@ -82,7 +81,7 @@ export default function BpCalibrationScreen() {
           onPress={handleSave}
           style={[styles.button, { backgroundColor: C.tint }]}
           activeOpacity={0.85}>
-          <Text style={[F.buttonText, { color: C.white }]}>Save Calibration</Text>
+          <Text style={[F.buttonText, { color: C.white, fontSize: 13 }]}>Save Calibration</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -91,11 +90,10 @@ export default function BpCalibrationScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  title: { fontSize: 20, fontWeight: "800", marginBottom: 8 },
-  subtitle: { fontSize: 13, marginBottom: 20, lineHeight: 18 },
-  card: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 16, marginBottom: 16 },
-  inputGroup: { marginBottom: 16 },
-  label: { fontSize: 14, fontWeight: "700", marginBottom: 8 },
-  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12, fontSize: 16, fontWeight: "600" },
-  button: { marginTop: 8, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  subtitle: { fontSize: 11, marginBottom: 12, lineHeight: 15 },
+  card: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 12, marginBottom: 12 },
+  inputGroup: { marginBottom: 10 },
+  label: { fontSize: 11, fontWeight: "700", marginBottom: 4 },
+  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 8, fontSize: 13, fontWeight: "600" },
+  button: { marginTop: 2, height: 40, borderRadius: 8, alignItems: "center", justifyContent: "center" },
 });
