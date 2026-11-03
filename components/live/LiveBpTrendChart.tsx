@@ -14,6 +14,8 @@ type Props = {
   height?: number;
   extraHeaderLabel?: string;
   calibrationTime?: number | null;
+  calibrationTimes?: number[];
+  calibrationCount?: number;
 };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -32,6 +34,8 @@ export default function LiveBpTrendChart({
   height = 28,
   extraHeaderLabel,
   calibrationTime,
+  calibrationTimes,
+  calibrationCount,
 }: Props) {
   const { colors: C } = useTheme();
   const [width, setWidth] = useState(0);
@@ -73,11 +77,18 @@ export default function LiveBpTrendChart({
     return Math.max(commonTN - commonT0, windowMs);
   }, [commonT0, commonTN]);
 
-  const calibrationX = useMemo(() => {
-    if (calibrationTime == null || calibrationTime <= 0 || commonSpan <= 0 || width <= 0 || commonT0 <= 0 || commonTN <= 0) return null;
-    if (calibrationTime < commonT0 || calibrationTime > commonTN) return null;
-    return ((calibrationTime - commonT0) / commonSpan) * width;
-  }, [calibrationTime, commonT0, commonTN, commonSpan, width]);
+  const allCalibTimes = useMemo(() => {
+    if (calibrationTimes && calibrationTimes.length > 0) return calibrationTimes;
+    if (calibrationTime != null && calibrationTime > 0) return [calibrationTime];
+    return [];
+  }, [calibrationTimes, calibrationTime]);
+
+  const calibrationXs = useMemo(() => {
+    if (allCalibTimes.length === 0 || commonSpan <= 0 || width <= 0 || commonT0 <= 0 || commonTN <= 0) return [];
+    return allCalibTimes
+      .filter((t) => t >= commonT0 && t <= commonTN)
+      .map((t) => ((t - commonT0) / commonSpan) * width);
+  }, [allCalibTimes, commonT0, commonTN, commonSpan, width]);
 
   const buildPath = (points: SeriesPoint[]) => {
     const safePts = points ?? [];
@@ -113,13 +124,23 @@ export default function LiveBpTrendChart({
   return (
     <View style={[styles.card, { backgroundColor: C.bg2, borderColor: C.border }]}>
       <View style={styles.headRow}>
-        <Text style={[styles.title, { color: C.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+        <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>
           {title}
         </Text>
         <View style={styles.legendRow}>
-          {extraHeaderLabel && <Text style={[styles.legendText, { color: "#5BD68A", marginRight: 4 }]} numberOfLines={1}>{extraHeaderLabel}</Text>}
-          <Text style={[styles.legendText, { color: "#E74C3C" }]} numberOfLines={1}>S:{currentSbp}</Text>
-          <Text style={[styles.legendText, { color: "#3498DB" }]} numberOfLines={1}> D:{currentDbp}</Text>
+          {extraHeaderLabel ? (
+            <Text style={[styles.legendText, { color: "#F5A25D" }]} numberOfLines={1}>{extraHeaderLabel}</Text>
+          ) : (
+            <>
+              {calibrationCount != null && calibrationCount > 0 && (
+                <Text style={[styles.legendText, { color: "#F5A25D", marginRight: 6 }]} numberOfLines={1}>
+                  Calib #{calibrationCount}
+                </Text>
+              )}
+              <Text style={[styles.legendText, { color: "#E74C3C" }]} numberOfLines={1}>S:{currentSbp}</Text>
+              <Text style={[styles.legendText, { color: "#3498DB" }]} numberOfLines={1}> D:{currentDbp}</Text>
+            </>
+          )}
         </View>
       </View>
 
@@ -156,17 +177,18 @@ export default function LiveBpTrendChart({
                 </React.Fragment>
               );
             })}
-            {calibrationTime != null && calibrationTime > 0 && calibrationX != null && calibrationX >= 0 && calibrationX <= width && (
+            {calibrationXs.map((cX, idx) => (
               <Line
-                x1={calibrationX}
-                x2={calibrationX}
+                key={`calib-${idx}-${cX}`}
+                x1={cX}
+                x2={cX}
                 y1={0}
                 y2={height}
                 stroke="#F5A25D"
                 strokeWidth={2}
                 strokeDasharray="3,3"
               />
-            )}
+            ))}
             {sbpResult.path !== "" && (
               <Path
                 d={sbpResult.path}

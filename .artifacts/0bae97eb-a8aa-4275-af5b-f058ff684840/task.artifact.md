@@ -1,0 +1,3 @@
+- [x] Implement EMA smoothing for live SBP/DBP in ViatomModule.kt
+- [x] Verify stabilization counter and calibration reset behavior
+- [x] Test build and runtime stability

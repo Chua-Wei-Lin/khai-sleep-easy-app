@@ -127,7 +127,7 @@ export default function LiveTrendChart({
       accessible
       accessibilityLabel={`${title}: ${currentLabel} ${unit}`}>
       <View style={styles.headRow}>
-        <Text style={[styles.title, { color: C.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+        <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>
           {title}
         </Text>
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4, flexShrink: 0 }}>

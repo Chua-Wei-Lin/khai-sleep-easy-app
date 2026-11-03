@@ -34,7 +34,29 @@ export default function BpCalibrationScreen() {
       return;
     }
 
-    const payload = { sbp: sbpNum, dbp: dbpNum, calibrationTime: Date.now() };
+    const now = Date.now();
+    let historyTimes: number[] = [];
+    try {
+      const stored = await AsyncStorage.getItem(BP_CALIBRATION_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed.calibrationTimes)) {
+          historyTimes = parsed.calibrationTimes;
+        } else if (parsed.calibrationTime != null) {
+          historyTimes = [parsed.calibrationTime];
+        }
+      }
+    } catch {}
+
+    historyTimes.push(now);
+
+    const payload = {
+      sbp: sbpNum,
+      dbp: dbpNum,
+      calibrationTime: now,
+      calibrationTimes: historyTimes,
+      calibrationCount: historyTimes.length,
+    };
     await AsyncStorage.setItem(BP_CALIBRATION_KEY, JSON.stringify(payload));
     try {
       // @ts-ignore

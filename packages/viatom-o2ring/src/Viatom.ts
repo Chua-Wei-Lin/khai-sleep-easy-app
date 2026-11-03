@@ -53,6 +53,7 @@ export type ServiceReadyEvent = {
 export type RealtimeEvent = {
   spo2: number;
   pr: number;
+  rr?: number;
   pi: number;
   motion: number;
   ts: number;

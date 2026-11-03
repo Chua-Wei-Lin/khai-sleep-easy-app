@@ -50,6 +50,7 @@ type O2RingContextValue = {
   knownDevices: DeviceItem[];
   spo2: number | null;
   pr: number | null;
+  rr: number | null;
   sbp: number | null;
   dbp: number | null;
   pi: number | null;
@@ -95,8 +96,20 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const [batteryState, setBatteryState] = useState<number | null>(null);
   const [spo2, setSpo2] = useState<number | null>(null);
   const [pr, setPr] = useState<number | null>(null);
+  const [rr, setRr] = useState<number | null>(null);
   const [sbp, setSbp] = useState<number | null>(null);
   const [dbp, setDbp] = useState<number | null>(null);
+  const [isBpStabilizing, setIsBpStabilizing] = useState(false);
+  const stabilizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerBpStabilization = useCallback(() => {
+    setIsBpStabilizing(true);
+    if (stabilizationTimerRef.current) clearTimeout(stabilizationTimerRef.current);
+    stabilizationTimerRef.current = setTimeout(() => {
+      setIsBpStabilizing(false);
+    }, 3000);
+  }, []);
+
   const [pi, setPi] = useState<number | null>(null);
   const [motion, setMotion] = useState<number | null>(null);
   const [realtimeUpdatedAt, setRealtimeUpdatedAt] = useState<number | null>(
@@ -464,6 +477,20 @@ const processReadQueue = useCallback(() => {
     const attempt = async (count: number): Promise<boolean> => {
       try {
         await O2Ring.startRealtime();
+        triggerBpStabilization();
+
+        // Auto-apply saved BP calibration right after starting realtime stream
+        AsyncStorage.getItem("settings:bp_calibration").then((stored) => {
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (parsed.sbp != null && parsed.dbp != null && O2Ring.setBpCalibration) {
+                O2Ring.setBpCalibration(Math.round(parsed.sbp), Math.round(parsed.dbp)).catch(() => {});
+              }
+            } catch {}
+          }
+        }).catch(() => {});
+
         return true;
       } catch (e) {
         if (count >= 10) {
@@ -565,6 +592,19 @@ const processReadQueue = useCallback(() => {
       serviceReadyRef.current = true;
       setServiceReady(true);
       startRealtimeStream();
+
+      // Auto-apply saved BP calibration on connection / service ready
+      AsyncStorage.getItem("settings:bp_calibration").then((stored) => {
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (parsed.sbp != null && parsed.dbp != null && O2Ring.setBpCalibration) {
+              O2Ring.setBpCalibration(Math.round(parsed.sbp), Math.round(parsed.dbp)).catch(() => {});
+            }
+          } catch {}
+        }
+      }).catch(() => {});
+
       syncPatientId()
         .catch(() => null)
         .finally(() => {
@@ -697,6 +737,7 @@ const processReadQueue = useCallback(() => {
 
         setSpo2(validSpo2);
         setPr(validPr);
+        setRr(rt.rr ?? null);
         setPi(rt.pi ?? null);
         setMotion(rt.motion ?? null);
         setRealtimeUpdatedAt(Date.now());
@@ -705,28 +746,43 @@ const processReadQueue = useCallback(() => {
         }
       });
 
-      subRtPpg = O2Ring.addRtPpgListener((ppg) => {
-        if (ppg?.ir && ppg?.red) {
-          ppgBufferRef.current.ir.push(...ppg.ir);
-          ppgBufferRef.current.red.push(...ppg.red);
-          if (ppg.motion) {
+      subRtPpg = O2Ring.addRtPpgListener((ppg: any) => {
+        const rawSamples = ppg?.samples ?? ppg?.ir;
+        if (rawSamples && Array.isArray(rawSamples) && rawSamples.length > 0) {
+          ppgBufferRef.current.ir.push(...rawSamples);
+          if (ppg?.motion) {
             ppgBufferRef.current.motion.push(...ppg.motion);
           }
-      // Log every ~100 samples to verify continuous streaming
+          if (ppgBufferRef.current.ir.length > 1250) {
+            ppgBufferRef.current.ir = ppgBufferRef.current.ir.slice(-1250);
+          }
+          const calculatedRr = calculateRespiratoryRate(prBuffer.current, ppgBufferRef.current.ir);
+          setRr(calculatedRr);
+
           if (ppgBufferRef.current.ir.length % 150 === 0) {
-            console.log(`[PPG Stream Active] Captured ${ppgBufferRef.current.ir.length} raw IR points`);
+            console.log(`[PPG Stream Active] Captured ${ppgBufferRef.current.ir.length} raw PPG samples`);
           }
         }
       });
 
       subWave = O2Ring.addBloodPressureListener((bp) => {
+        if (bp?.stabilizing === true) {
+          setIsBpStabilizing(true);
+          bpBuffer.current = [];
+          setSbp(null);
+          setDbp(null);
+          return;
+        }
+
         if (spo2Ref.current == null || spo2Ref.current < 20 || prRef.current == null || prRef.current < 20) {
           bpBuffer.current = [];
           setSbp(null);
           setDbp(null);
           return;
         }
+
         if (bp?.sbp != null && bp?.dbp != null && bp.sbp > 30 && bp.dbp > 30 && !isNaN(bp.sbp) && !isNaN(bp.dbp)) {
+          setIsBpStabilizing(false);
           const high = Math.max(bp.sbp, bp.dbp);
           const low = Math.min(bp.sbp, bp.dbp);
           let rawSbp = high;
@@ -867,6 +923,7 @@ const processReadQueue = useCallback(() => {
         setConnectedDevice(null);
         setSpo2(null);
         setPr(null);
+        setRr(null);
         setSbp(null);
         setDbp(null);
         setBattery(null);
@@ -1207,6 +1264,7 @@ const processReadQueue = useCallback(() => {
     setConnectedDevice(null);
     setSpo2(null);
     setPr(null);
+    setRr(null);
     setSbp(null);
     setDbp(null);
     setRealtimeUpdatedAt(null);
@@ -1513,8 +1571,10 @@ const processReadQueue = useCallback(() => {
       knownDevices,
       spo2,
       pr,
+      rr,
       sbp,
       dbp,
+      isBpStabilizing,
       pi,
       motion,
       realtimeUpdatedAt,
@@ -1549,8 +1609,10 @@ const processReadQueue = useCallback(() => {
       knownDevices,
       spo2,
       pr,
+      rr,
       sbp,
       dbp,
+      isBpStabilizing,
       pi,
       motion,
       realtimeUpdatedAt,

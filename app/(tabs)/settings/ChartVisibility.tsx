@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import SettingsList from "../../../components/SettingsList";
 import type { Card } from "../../../types/settings";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../../../theme/ThemeProvider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type VisibleCharts = {
@@ -25,6 +26,7 @@ export const DEFAULT_VISIBLE_CHARTS: VisibleCharts = {
 export const CHART_VISIBILITY_KEY = "settings:visible_charts";
 
 export default function ChartVisibilityScreen() {
+  const { colors: C } = useTheme();
   const [charts, setCharts] = useState<VisibleCharts>(DEFAULT_VISIBLE_CHARTS);
 
   useEffect(() => {
@@ -98,7 +100,7 @@ export default function ChartVisibilityScreen() {
   );
 
   return (
-    <SafeAreaView edges={["left", "right"]} style={{ flex: 1 }}>
+    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: C.bg }}>
       <SettingsList
         cards={cards}
         ctaFlag={{ enabled: false }}

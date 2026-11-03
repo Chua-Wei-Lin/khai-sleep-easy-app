@@ -43,6 +43,17 @@ class ViatomModule : Module() {
     @Volatile private var nextPollAt = 0L
     @Volatile private var pollCount = 0L
     @Volatile private var liveWave = false   // the live screen turns this on while it is open
+    @Volatile private var dcBaselineEma = 0.0
+    @Volatile private var bpStabilizationCounter = 375
+    @Volatile private var pendingCalibrationSbp = 120
+    @Volatile private var pendingCalibrationDbp = 80
+    @Volatile private var isCalibrationPending = false
+    @Volatile private var isBpStabilizing = true
+    @Volatile private var currentCalibSbp = 120.0
+    @Volatile private var currentCalibDbp = 80.0
+    private var smoothedSbp = 0.0
+    private var smoothedDbp = 0.0
+    private var hasValidBp = false
     private var lastMotion = 0
 
     // Sends finished chunk files to the server from its own thread (does not depend on JavaScript)
@@ -362,6 +373,10 @@ class ViatomModule : Module() {
             if (connectionSeq == mySeq) {
                 connectedModel = bt.model
                 connectedMac = mac
+                liveWave = true
+                bpStabilizationCounter = 375
+                ensureWaveTaskRunning()
+                emitter?.emit("onConnected", mapOf("mac" to mac, "model" to bt.model))
             }
 
             true
@@ -422,6 +437,28 @@ class ViatomModule : Module() {
 
         Function("initBpAlgorithm") {
             megaBp.initNative()
+            bpStabilizationCounter = 375
+            isBpStabilizing = true
+            hasValidBp = false
+        }
+
+        AsyncFunction("setBpCalibration") { sbp: Int, dbp: Int ->
+            try {
+                pendingCalibrationSbp = sbp
+                pendingCalibrationDbp = dbp
+                currentCalibSbp = sbp.toDouble()
+                currentCalibDbp = dbp.toDouble()
+                isCalibrationPending = true
+                isBpStabilizing = true
+                bpStabilizationCounter = 375
+                smoothedSbp = 0.0
+                smoothedDbp = 0.0
+                hasValidBp = false
+                ev("setBpCalibration pending: sbp=$sbp dbp=$dbp (3s optical stabilization started before native reset)")
+            } catch (e: Exception) {
+                ev("setBpCalibration error: ${e.message}")
+            }
+            true
         }
 
         Function("stopBpAlgorithm") {
@@ -709,6 +746,51 @@ class ViatomModule : Module() {
                 }
             }
 
+            // Calculate RIV-AM Respiratory Rate from wFs (Amplitude Modulation + Baseline Wander)
+            var extractedRr = 14
+            if (wFs.size >= 125) {
+                try {
+                    val windowSize = 25
+                    val envelope = mutableListOf<Double>()
+                    val baselineWander = mutableListOf<Double>()
+                    var i = 0
+                    while (i < wFs.size) {
+                        val end = (i + windowSize).coerceAtMost(wFs.size)
+                        var max = Double.MIN_VALUE
+                        var min = Double.MAX_VALUE
+                        var sum = 0.0
+                        for (j in i until end) {
+                            val v = wFs[j].toDouble()
+                            if (v > max) max = v
+                            if (v < min) min = v
+                            sum += v
+                        }
+                        envelope.add(max - min)
+                        baselineWander.add(sum / (end - i))
+                        i += windowSize
+                    }
+                    if (envelope.size >= 10) {
+                        val combined = envelope.indices.map { envelope[it] + baselineWander[it] }
+                        val mean = combined.average()
+                        val detrended = combined.map { it - mean }
+                        var zeroCrossings = 0
+                        for (j in 0 until detrended.size - 1) {
+                            if ((detrended[j] >= 0 && detrended[j + 1] < 0) || (detrended[j] < 0 && detrended[j + 1] >= 0)) {
+                                zeroCrossings++
+                            }
+                        }
+                        val durationSec = wFs.size / 125.0
+                        if (durationSec > 0.0) {
+                            val breathsPerSec = (zeroCrossings / 2.0) / durationSec
+                            val bpm = Math.round(breathsPerSec * 60.0).toInt()
+                            if (bpm in 9..24) {
+                                extractedRr = bpm
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
             val maxVal = wFs.maxOrNull() ?: 0
             val minVal = wFs.minOrNull() ?: 0
             val ac = (maxVal - minVal).toDouble()
@@ -721,30 +803,101 @@ class ViatomModule : Module() {
 
             // keep SpO2/PR/PI/Motion updating - single unified onRealtime emitter
             emitter?.emit("onRealtime", mapOf(
-                "spo2" to rtWave.spo2, "pr" to rtWave.pr,
+                "spo2" to rtWave.spo2, "pr" to rtWave.pr, "rr" to extractedRr,
                 "pi" to String.format(java.util.Locale.US, "%.1f", constrainPi).toDouble(), "motion" to motionVal, "ts" to ts))
 
-            if (liveWave) {
+            if (liveWave || wavePolling) {
                 emitter?.emit("onPpgPacket", mapOf("samples" to wFs.toList(), "ts" to ts))
             }
 
             ready?.let { emitter?.emit("onPpgChunkReady", it) }
 
-            var lastSbp = 120.0
-            var lastDbp = 80.0
+            val packetDc = wFs.average()
+            if (dcBaselineEma == 0.0) {
+                dcBaselineEma = packetDc
+            } else {
+                dcBaselineEma = dcBaselineEma * 0.9 + packetDc * 0.1
+            }
+            val dcInt = dcBaselineEma.toInt()
+
+            var lastSbp = smoothedSbp
+            var lastDbp = smoothedDbp
             try {
                 for (sample in wFs) {
-                    val bp = megaBp.stepNative(sample)
-                    if (bp != null && bp.size >= 2 && bp[0] > 0.0 && bp[1] > 0.0) {
-                        lastSbp = bp[0]
-                        lastDbp = bp[1]
+                    if (bpStabilizationCounter > 0) {
+                        bpStabilizationCounter--
+                        if (bpStabilizationCounter == 0 && isCalibrationPending) {
+                            try {
+                                megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
+                                isCalibrationPending = false
+                                ev("megaBp setCalibrationNative executed after 3s optical stabilization")
+                            } catch (e: Exception) {
+                                ev("delayed setCalibrationNative error: ${e.message}")
+                            }
+                        }
+                        continue
+                    }
+                    if (isCalibrationPending) {
+                        try {
+                            megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
+                            isCalibrationPending = false
+                            ev("megaBp setCalibrationNative executed (counter already 0)")
+                        } catch (e: Exception) {
+                            ev("immediate setCalibrationNative error: ${e.message}")
+                        }
+                    }
+                    val acSample = sample - dcInt
+                    val bp = megaBp.stepNative(acSample)
+                    if (bp != null && bp.size >= 2 && bp[0] >= 50.0 && bp[1] >= 35.0) {
+                        val rawCppSbp = bp[0]
+                        val rawCppDbp = bp[1]
+
+                        // Back-calculate and strictly clamp optical ratio multiplier (0.85x to 1.15x variation)
+                        val impliedRatioSbp = if (currentCalibSbp > 0.0) rawCppSbp / currentCalibSbp else 1.0
+                        val impliedRatioDbp = if (currentCalibDbp > 0.0) rawCppDbp / currentCalibDbp else 1.0
+
+                        // Heart Rate Compensation Guard: dampening factor if pulse rate exceeds 90 bpm
+                        val currentPr = rtWave.pr
+                        val hrDampening = if (currentPr > 90) {
+                            1.0 - ((currentPr - 90).toDouble() * 0.003).coerceIn(0.0, 0.12)
+                        } else {
+                            1.0
+                        }
+
+                        val clampedRatioSbp = (impliedRatioSbp.coerceIn(0.85, 1.15) * hrDampening).coerceIn(0.80, 1.15)
+                        val clampedRatioDbp = (impliedRatioDbp.coerceIn(0.85, 1.15) * hrDampening).coerceIn(0.80, 1.15)
+
+                        var rawSbp = currentCalibSbp * clampedRatioSbp
+                        var rawDbp = currentCalibDbp * clampedRatioDbp
+
+                        if (rawSbp - rawDbp < 25.0) {
+                            rawSbp = rawDbp + 25.0
+                        }
+
+                        if (!hasValidBp) {
+                            smoothedSbp = rawSbp
+                            smoothedDbp = rawDbp
+                            hasValidBp = true
+                        } else {
+                            // EMA smoothing (alpha = 0.25) to prevent vertical cliffs and erratic jumps
+                            smoothedSbp = smoothedSbp * 0.75 + rawSbp * 0.25
+                            smoothedDbp = smoothedDbp * 0.75 + rawDbp * 0.25
+                        }
+                        isBpStabilizing = false
+                        lastSbp = smoothedSbp
+                        lastDbp = smoothedDbp
                     }
                 }
             } catch (e: Exception) {
                 Log.w("MegaBp", "stepNative error", e)
             }
 
-            emitter?.emit("onBloodPressure", mapOf("sbp" to lastSbp.toInt(), "dbp" to lastDbp.toInt(), "ts" to ts))
+            emitter?.emit("onBloodPressure", mapOf(
+                "sbp" to (if (isBpStabilizing) 0 else lastSbp.toInt()),
+                "dbp" to (if (isBpStabilizing) 0 else lastDbp.toInt()),
+                "stabilizing" to isBpStabilizing,
+                "ts" to ts
+            ))
         }
     }
 

@@ -111,8 +111,10 @@ export default function Home() {
     knownDevices,
     spo2,
     pr,
+    rr,
     sbp,
     dbp,
+    isBpStabilizing,
     pi,
     motion,
     realtimeUpdatedAt,
@@ -222,6 +224,8 @@ export default function Home() {
   };
 
   const [calibrationTime, setCalibrationTime] = useState<number | null>(null);
+  const [calibrationTimes, setCalibrationTimes] = useState<number[]>([]);
+  const [calibrationCount, setCalibrationCount] = useState<number>(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -231,6 +235,13 @@ export default function Home() {
             const parsed = JSON.parse(stored);
             if (parsed.calibrationTime != null) {
               setCalibrationTime(parsed.calibrationTime);
+            }
+            if (Array.isArray(parsed.calibrationTimes)) {
+              setCalibrationTimes(parsed.calibrationTimes);
+              setCalibrationCount(parsed.calibrationTimes.length);
+            } else if (parsed.calibrationTime != null) {
+              setCalibrationTimes([parsed.calibrationTime]);
+              setCalibrationCount(1);
             }
           } catch {}
         }
@@ -286,11 +297,11 @@ export default function Home() {
   const activeDbp = isBpValid ? Math.min(sbp, dbp) : null;
 
   const sbpSeries = useReadingSeries(activeSbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
-  const dbpSeries = useReadingSeries(dbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
+  const dbpSeries = useReadingSeries(activeDbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
   const isValidMotion = (v: number) => v >= 20 && v <= 255;
   const filteredMotion = motion != null && motion >= 20 ? motion : 0;
   const motionSeries = useReadingSeries(filteredMotion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac);
-  const rrValue = isSignalActive && pr != null && pr > 0 ? Math.max(10, Math.min(30, Math.round(pr / 4))) : null;
+  const rrValue = isSignalActive && pr != null && pr > 0 ? calculateRespiratoryRate([pr]) : null;
   const isValidRr = (v: number) => v >= 5 && v <= 60;
   const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac);
 
@@ -299,8 +310,9 @@ export default function Home() {
 
   const displayPr = pr == null || pr < 20 || pr > 250 ? "--" : `${pr}`;
 
-  const displaySbp = !isSignalActive || sbp == null || dbp == null || sbp < 30 || dbp < 20 ? "--" : `${Math.max(sbp, dbp)}`;
-  const displayDbp = !isSignalActive || sbp == null || dbp == null || sbp < 30 || dbp < 20 ? "--" : `${Math.min(sbp, dbp)}`;
+  const effectiveStabilizing = isBpStabilizing && isSignalActive;
+  const displaySbp = effectiveStabilizing ? "--" : (!isSignalActive || sbp == null || dbp == null || sbp < 30 || dbp < 20 ? "--" : `${Math.max(sbp, dbp)}`);
+  const displayDbp = effectiveStabilizing ? "--" : (!isSignalActive || sbp == null || dbp == null || sbp < 30 || dbp < 20 ? "--" : `${Math.min(sbp, dbp)}`);
 
   const displayMotion = filteredMotion === 0 ? "0" : `${filteredMotion}`;
   const displayRr = rrValue == null ? "--" : `${rrValue}`;
@@ -647,6 +659,9 @@ export default function Home() {
                     dbpPoints={dbpSeries}
                     height={38}
                     calibrationTime={calibrationTime}
+                    calibrationTimes={calibrationTimes}
+                    calibrationCount={calibrationCount}
+                    extraHeaderLabel={effectiveStabilizing ? "Stabilizing..." : undefined}
                   />
                 )}
 
@@ -718,6 +733,9 @@ export default function Home() {
                           dbpPoints={dbpSeries}
                           height={48}
                           calibrationTime={calibrationTime}
+                          calibrationTimes={calibrationTimes}
+                          calibrationCount={calibrationCount}
+                          extraHeaderLabel={effectiveStabilizing ? "Stabilizing..." : undefined}
                         />
                       </View>
                     )}
