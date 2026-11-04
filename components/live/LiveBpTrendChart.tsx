@@ -50,13 +50,8 @@ export default function LiveBpTrendChart({
   const rawSbp = sbpPoints ?? [];
   const rawDbp = dbpPoints ?? [];
 
-  // Synchronize ending timestamps so DBP never trails past SBP when signal stops
-  const maxSbpT = rawSbp.length > 0 ? rawSbp[rawSbp.length - 1].t : 0;
-  const maxDbpT = rawDbp.length > 0 ? rawDbp[rawDbp.length - 1].t : 0;
-  const minLastT = maxSbpT > 0 && maxDbpT > 0 ? Math.min(maxSbpT, maxDbpT) : Math.max(maxSbpT, maxDbpT);
-
-  const safeSbp = useMemo(() => (minLastT > 0 ? rawSbp.filter((p) => p.t <= minLastT) : rawSbp), [rawSbp, minLastT]);
-  const safeDbp = useMemo(() => (minLastT > 0 ? rawDbp.filter((p) => p.t <= minLastT) : rawDbp), [rawDbp, minLastT]);
+  const safeSbp = rawSbp;
+  const safeDbp = rawDbp;
 
   // Common time boundaries for 100% synchronized X-axis positioning
   const commonT0 = useMemo(() => {

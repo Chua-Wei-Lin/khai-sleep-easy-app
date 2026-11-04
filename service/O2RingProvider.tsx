@@ -125,6 +125,13 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const [calibrationTimes, setCalibrationTimes] = useState<number[]>([]);
   const [calibrationCount, setCalibrationCount] = useState<number>(0);
   const ppgHzRef = React.useRef(125);
+  const calibrationSentRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!connectedDevice) {
+      calibrationSentRef.current = false;
+    }
+  }, [connectedDevice]);
 
   const addCalibrationTimestamp = useCallback((time: number) => {
     setCalibrationTimes((prev) => {
@@ -534,19 +541,6 @@ const processReadQueue = useCallback(() => {
       try {
         await O2Ring.startRealtime();
         triggerBpStabilization();
-
-        // Auto-apply saved BP calibration right after starting realtime stream
-        AsyncStorage.getItem("settings:bp_calibration").then((stored) => {
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored);
-              if (parsed.sbp != null && parsed.dbp != null && O2Ring.setBpCalibration) {
-                O2Ring.setBpCalibration(Math.round(parsed.sbp), Math.round(parsed.dbp)).catch(() => {});
-              }
-            } catch {}
-          }
-        }).catch(() => {});
-
         return true;
       } catch (e) {
         if (count >= 10) {
@@ -616,16 +610,7 @@ const processReadQueue = useCallback(() => {
     };
   }, [connectedDevice, serviceReady, startRealtimeStream, syncPatientId]);
 
-  // Periodically refresh ring battery status every 60 seconds while connected
-  useEffect(() => {
-    if (!connectedDevice || !serviceReady) return;
-
-    const interval = setInterval(() => {
-      O2Ring.getInfo().catch(() => {});
-    }, 60000);
-
-    return () => clearInterval(interval);
-  }, [connectedDevice, serviceReady]);
+  // Periodically refresh ring battery status every 60 seconds while connected (removed to prevent native re-triggers)
 
   const requestPermissions = useCallback(async () => {
     try {
@@ -660,18 +645,6 @@ const processReadQueue = useCallback(() => {
       serviceReadyRef.current = true;
       setServiceReady(true);
       startRealtimeStream();
-
-      // Auto-apply saved BP calibration on connection / service ready
-      AsyncStorage.getItem("settings:bp_calibration").then((stored) => {
-        if (stored) {
-          try {
-            const parsed = JSON.parse(stored);
-            if (parsed.sbp != null && parsed.dbp != null && O2Ring.setBpCalibration) {
-              O2Ring.setBpCalibration(Math.round(parsed.sbp), Math.round(parsed.dbp)).catch(() => {});
-            }
-          } catch {}
-        }
-      }).catch(() => {});
 
       syncPatientId()
         .catch(() => null)
@@ -1245,6 +1218,7 @@ const processReadQueue = useCallback(() => {
     const connectToDevice = useCallback(
       async (device: DeviceItem) => {
         // Any manual connect should re-enable auto-reconnect until the user explicitly disconnects again.
+        resetSessionCalibration();
         autoReconnectEnabled.current = true;
         setConnecting(true);
         connectingRef.current = true;
@@ -1285,6 +1259,18 @@ const processReadQueue = useCallback(() => {
         setIosRealtimeReady(false);
         console.log("[O2Ring] connecting", device.name, "model:", device.model);
         await O2Ring.connect(device.mac, device.model);
+
+        // Apply saved BP calibration once upon successful connection
+        AsyncStorage.getItem("settings:bp_calibration").then((stored) => {
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (parsed.sbp != null && parsed.dbp != null && O2Ring.setBpCalibration) {
+                O2Ring.setBpCalibration(Math.round(parsed.sbp), Math.round(parsed.dbp)).catch(() => {});
+              }
+            } catch {}
+          }
+        }).catch(() => {});
 
         // Mark as connected; realtime will start when onServiceReady fires
         setConnectedDevice(device);
@@ -1339,6 +1325,7 @@ const processReadQueue = useCallback(() => {
     setRr(null);
     setSbp(null);
     setDbp(null);
+    resetSessionCalibration();
     setRealtimeUpdatedAt(null);
     setIsDownloadingHistory(false);
     setDownloadProgress(0);

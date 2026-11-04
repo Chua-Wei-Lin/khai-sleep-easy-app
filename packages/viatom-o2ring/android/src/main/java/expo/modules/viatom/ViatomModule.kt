@@ -49,6 +49,7 @@ class ViatomModule : Module() {
     @Volatile private var pendingCalibrationDbp = 80
     @Volatile private var isCalibrationPending = false
     @Volatile private var isBpStabilizing = true
+    @Volatile private var isBpInitialized = false
     @Volatile private var currentCalibSbp = 120.0
     @Volatile private var currentCalibDbp = 80.0
     private var smoothedSbp = 0.0
@@ -436,10 +437,13 @@ class ViatomModule : Module() {
         }
 
         Function("initBpAlgorithm") {
-            megaBp.initNative()
-            bpStabilizationCounter = 375
-            isBpStabilizing = true
-            hasValidBp = false
+            if (!isBpInitialized) {
+                megaBp.initNative()
+                bpStabilizationCounter = 375
+                isBpStabilizing = true
+                hasValidBp = false
+                isBpInitialized = true
+            }
         }
 
         AsyncFunction("setBpCalibration") { sbp: Int, dbp: Int ->
@@ -463,6 +467,7 @@ class ViatomModule : Module() {
 
         Function("stopBpAlgorithm") {
             megaBp.terminateNative()
+            isBpInitialized = false
         }
 
         // Starts continuous PPG capture. Chunk files are written to
@@ -820,10 +825,8 @@ class ViatomModule : Module() {
             }
             val dcInt = dcBaselineEma.toInt()
 
-            // Signal Quality Index (SQI) evaluation (0.0 = noise, 1.0 = pristine)
-            val isMotionClean = motionVal == 0 && ac in 15.0..220.0
-            val isPerfusionClean = constrainPi >= 0.5
-            val sqi = if (isMotionClean && isPerfusionClean) 1.0 else if (constrainPi >= 0.3 && ac in 10.0..280.0) 0.5 else 0.0
+            // Signal Quality Index (SQI) evaluation (relaxed for real-world resting signals)
+            val sqi = if (motionVal < 30 && constrainPi >= 0.2 && ac >= 5.0) 1.0 else 0.5
 
             var lastSbp = smoothedSbp
             var lastDbp = smoothedDbp
@@ -832,27 +835,25 @@ class ViatomModule : Module() {
                     if (bpStabilizationCounter > 0) {
                         bpStabilizationCounter--
                         if (bpStabilizationCounter == 0 && isCalibrationPending) {
-                            if (sqi >= 0.5) {
-                                try {
-                                    megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
-                                    isCalibrationPending = false
-                                    ev("megaBp setCalibrationNative executed on high-SQI signal ($sqi)")
-                                } catch (e: Exception) {
-                                    ev("delayed setCalibrationNative error: ${e.message}")
-                                }
-                            } else {
-                                bpStabilizationCounter = 25 // extend stabilization until clean signal
+                            try {
+                                megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
+                                isCalibrationPending = false
+                                ev("megaBp setCalibrationNative executed after stabilization")
+                            } catch (e: Exception) {
+                                ev("delayed setCalibrationNative error: ${e.message}")
                             }
                         }
                         continue
                     }
                     if (isCalibrationPending) {
-                        if (sqi >= 0.5) {
-                            try {
-                                megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
-                                isCalibrationPending = false
-                                ev("megaBp setCalibrationNative executed (counter already 0)")
-                            } catch (e: Exception) {
+                        try {
+                            megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
+                            isCalibrationPending = false
+                            ev("megaBp setCalibrationNative executed (counter already 0)")
+                        } catch (e: Exception) {
+                            ev("immediate setCalibrationNative error: ${e.message}")
+                        }
+                    }
                                 ev("immediate setCalibrationNative error: ${e.message}")
                             }
                         }
