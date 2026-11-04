@@ -5,12 +5,14 @@ import { useTheme } from "../../../theme/ThemeProvider";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as O2Ring from "@ios-app/viatom-o2ring";
+import { useO2Ring } from "../../../service/O2RingProvider";
 
 export const BP_CALIBRATION_KEY = "settings:bp_calibration";
 
 export default function BpCalibrationScreen() {
   const { colors: C, fonts: F } = useTheme();
   const router = useRouter();
+  const { addCalibrationTimestamp } = useO2Ring();
   const [sbp, setSbp] = useState("120.0");
   const [dbp, setDbp] = useState("80.0");
 
@@ -49,6 +51,7 @@ export default function BpCalibrationScreen() {
     } catch {}
 
     historyTimes.push(now);
+    addCalibrationTimestamp?.(now);
 
     const payload = {
       sbp: sbpNum,

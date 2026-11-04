@@ -90,8 +90,10 @@ function DeviceRow({ item, onPress, disabled, connecting }: DeviceRowProps) {
           resizeMode="contain"
         />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[F.text, { color: C.white }]}>{getDisplayName(item.name, item.model)}</Text>
+      <View style={{ flex: 1, marginRight: 8 }}>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: C.white }} numberOfLines={1}>
+          {getDisplayName(item.name, item.model)}
+        </Text>
       </View>
       {connecting ? (
         <ActivityIndicator color={C.white} />

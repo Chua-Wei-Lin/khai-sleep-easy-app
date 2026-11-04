@@ -273,8 +273,7 @@ export default function History() {
       const hh = core.slice(8, 10);
       const mm = core.slice(10, 12);
       const ss = core.slice(12, 14);
-      const prefix = isPpg ? "[PPG Waveform]" : "[O2Ring]";
-      return `${prefix} ${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+      return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
     }
 
     // fallback: show whatever we got

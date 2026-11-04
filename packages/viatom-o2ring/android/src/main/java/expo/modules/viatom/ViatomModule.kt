@@ -820,6 +820,11 @@ class ViatomModule : Module() {
             }
             val dcInt = dcBaselineEma.toInt()
 
+            // Signal Quality Index (SQI) evaluation (0.0 = noise, 1.0 = pristine)
+            val isMotionClean = motionVal == 0 && ac in 15.0..220.0
+            val isPerfusionClean = constrainPi >= 0.5
+            val sqi = if (isMotionClean && isPerfusionClean) 1.0 else if (constrainPi >= 0.3 && ac in 10.0..280.0) 0.5 else 0.0
+
             var lastSbp = smoothedSbp
             var lastDbp = smoothedDbp
             try {
@@ -827,65 +832,75 @@ class ViatomModule : Module() {
                     if (bpStabilizationCounter > 0) {
                         bpStabilizationCounter--
                         if (bpStabilizationCounter == 0 && isCalibrationPending) {
-                            try {
-                                megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
-                                isCalibrationPending = false
-                                ev("megaBp setCalibrationNative executed after 3s optical stabilization")
-                            } catch (e: Exception) {
-                                ev("delayed setCalibrationNative error: ${e.message}")
+                            if (sqi >= 0.5) {
+                                try {
+                                    megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
+                                    isCalibrationPending = false
+                                    ev("megaBp setCalibrationNative executed on high-SQI signal ($sqi)")
+                                } catch (e: Exception) {
+                                    ev("delayed setCalibrationNative error: ${e.message}")
+                                }
+                            } else {
+                                bpStabilizationCounter = 25 // extend stabilization until clean signal
                             }
                         }
                         continue
                     }
                     if (isCalibrationPending) {
-                        try {
-                            megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
-                            isCalibrationPending = false
-                            ev("megaBp setCalibrationNative executed (counter already 0)")
-                        } catch (e: Exception) {
-                            ev("immediate setCalibrationNative error: ${e.message}")
+                        if (sqi >= 0.5) {
+                            try {
+                                megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
+                                isCalibrationPending = false
+                                ev("megaBp setCalibrationNative executed (counter already 0)")
+                            } catch (e: Exception) {
+                                ev("immediate setCalibrationNative error: ${e.message}")
+                            }
                         }
                     }
-                    val acSample = sample - dcInt
-                    val bp = megaBp.stepNative(acSample)
-                    if (bp != null && bp.size >= 2 && bp[0] >= 50.0 && bp[1] >= 35.0) {
-                        val rawCppSbp = bp[0]
-                        val rawCppDbp = bp[1]
 
-                        // Back-calculate and strictly clamp optical ratio multiplier (0.85x to 1.15x variation)
-                        val impliedRatioSbp = if (currentCalibSbp > 0.0) rawCppSbp / currentCalibSbp else 1.0
-                        val impliedRatioDbp = if (currentCalibDbp > 0.0) rawCppDbp / currentCalibDbp else 1.0
+                    // Quality Gate: Only process BP calculations when Signal Quality Index is sufficient
+                    if (sqi >= 0.5) {
+                        val acSample = sample - dcInt
+                        val bp = megaBp.stepNative(acSample)
+                        if (bp != null && bp.size >= 2 && bp[0] >= 50.0 && bp[1] >= 35.0) {
+                            val rawCppSbp = bp[0]
+                            val rawCppDbp = bp[1]
 
-                        // Heart Rate Compensation Guard: dampening factor if pulse rate exceeds 90 bpm
-                        val currentPr = rtWave.pr
-                        val hrDampening = if (currentPr > 90) {
-                            1.0 - ((currentPr - 90).toDouble() * 0.003).coerceIn(0.0, 0.12)
-                        } else {
-                            1.0
+                            // Back-calculate and strictly clamp optical ratio multiplier (0.85x to 1.15x variation)
+                            val impliedRatioSbp = if (currentCalibSbp > 0.0) rawCppSbp / currentCalibSbp else 1.0
+                            val impliedRatioDbp = if (currentCalibDbp > 0.0) rawCppDbp / currentCalibDbp else 1.0
+
+                            // Heart Rate Compensation Guard: dampening factor if pulse rate exceeds 90 bpm
+                            val currentPr = rtWave.pr
+                            val hrDampening = if (currentPr > 90) {
+                                1.0 - ((currentPr - 90).toDouble() * 0.003).coerceIn(0.0, 0.12)
+                            } else {
+                                1.0
+                            }
+
+                            val clampedRatioSbp = (impliedRatioSbp.coerceIn(0.85, 1.15) * hrDampening).coerceIn(0.80, 1.15)
+                            val clampedRatioDbp = (impliedRatioDbp.coerceIn(0.85, 1.15) * hrDampening).coerceIn(0.80, 1.15)
+
+                            var rawSbp = currentCalibSbp * clampedRatioSbp
+                            var rawDbp = currentCalibDbp * clampedRatioDbp
+
+                            if (rawSbp - rawDbp < 25.0) {
+                                rawSbp = rawDbp + 25.0
+                            }
+
+                            if (!hasValidBp) {
+                                smoothedSbp = rawSbp
+                                smoothedDbp = rawDbp
+                                hasValidBp = true
+                            } else {
+                                // EMA smoothing (alpha = 0.25) to prevent vertical cliffs and erratic jumps
+                                smoothedSbp = smoothedSbp * 0.75 + rawSbp * 0.25
+                                smoothedDbp = smoothedDbp * 0.75 + rawDbp * 0.25
+                            }
+                            isBpStabilizing = false
+                            lastSbp = smoothedSbp
+                            lastDbp = smoothedDbp
                         }
-
-                        val clampedRatioSbp = (impliedRatioSbp.coerceIn(0.85, 1.15) * hrDampening).coerceIn(0.80, 1.15)
-                        val clampedRatioDbp = (impliedRatioDbp.coerceIn(0.85, 1.15) * hrDampening).coerceIn(0.80, 1.15)
-
-                        var rawSbp = currentCalibSbp * clampedRatioSbp
-                        var rawDbp = currentCalibDbp * clampedRatioDbp
-
-                        if (rawSbp - rawDbp < 25.0) {
-                            rawSbp = rawDbp + 25.0
-                        }
-
-                        if (!hasValidBp) {
-                            smoothedSbp = rawSbp
-                            smoothedDbp = rawDbp
-                            hasValidBp = true
-                        } else {
-                            // EMA smoothing (alpha = 0.25) to prevent vertical cliffs and erratic jumps
-                            smoothedSbp = smoothedSbp * 0.75 + rawSbp * 0.25
-                            smoothedDbp = smoothedDbp * 0.75 + rawDbp * 0.25
-                        }
-                        isBpStabilizing = false
-                        lastSbp = smoothedSbp
-                        lastDbp = smoothedDbp
                     }
                 }
             } catch (e: Exception) {

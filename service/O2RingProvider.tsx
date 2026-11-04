@@ -122,6 +122,62 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
     completed: 0,
   });
   const [patientId, setPatientId] = useState<string | null>(null);
+  const [calibrationTimes, setCalibrationTimes] = useState<number[]>([]);
+  const [calibrationCount, setCalibrationCount] = useState<number>(0);
+  const ppgHzRef = React.useRef(125);
+
+  const addCalibrationTimestamp = useCallback((time: number) => {
+    setCalibrationTimes((prev) => {
+      const next = [...prev, time];
+      setCalibrationCount(next.length);
+      return next;
+    });
+  }, []);
+
+  const resetSessionCalibration = useCallback(() => {
+    setCalibrationTimes([]);
+    setCalibrationCount(0);
+    AsyncStorage.getItem("settings:bp_calibration").then((stored) => {
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const resetPayload = {
+            sbp: parsed.sbp,
+            dbp: parsed.dbp,
+            calibrationTime: null,
+            calibrationTimes: [],
+            calibrationCount: 0,
+          };
+          AsyncStorage.setItem("settings:bp_calibration", JSON.stringify(resetPayload)).catch(() => {});
+        } catch {}
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem("settings:bp_calibration").then((stored) => {
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed.calibrationTimes)) {
+            setCalibrationTimes(parsed.calibrationTimes);
+            setCalibrationCount(parsed.calibrationTimes.length);
+          }
+        } catch {}
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.getItem("ppg_sampling_hz").then((val) => {
+      if (val) {
+        const parsedHz = parseInt(val, 10);
+        if (!isNaN(parsedHz) && parsedHz > 0) {
+          ppgHzRef.current = parsedHz;
+        }
+      }
+    });
+  }, []);
   const infoRetryTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const patientIdRef = React.useRef<string | null>(null);
   const connectedDeviceRef = React.useRef<DeviceItem | null>(null);
@@ -560,6 +616,17 @@ const processReadQueue = useCallback(() => {
     };
   }, [connectedDevice, serviceReady, startRealtimeStream, syncPatientId]);
 
+  // Periodically refresh ring battery status every 60 seconds while connected
+  useEffect(() => {
+    if (!connectedDevice || !serviceReady) return;
+
+    const interval = setInterval(() => {
+      O2Ring.getInfo().catch(() => {});
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [connectedDevice, serviceReady]);
+
   const requestPermissions = useCallback(async () => {
     try {
       const granted = await O2Ring.requestPermissions();
@@ -575,6 +642,7 @@ const processReadQueue = useCallback(() => {
   useEffect(() => {
     const subConn = O2Ring.addConnectedListener(async (e) => {
       console.log("[O2Ring] onConnected event received:", e);
+      resetSessionCalibration();
       serviceReadyRef.current = true;
       setServiceReady(true);
       await startRealtimeStream();
@@ -756,7 +824,11 @@ const processReadQueue = useCallback(() => {
           if (ppgBufferRef.current.ir.length > 1250) {
             ppgBufferRef.current.ir = ppgBufferRef.current.ir.slice(-1250);
           }
-          const calculatedRr = calculateRespiratoryRate(prBuffer.current, ppgBufferRef.current.ir);
+          const calculatedRr = calculateRespiratoryRate(
+            prBuffer.current,
+            ppgBufferRef.current.ir,
+            ppgHzRef.current
+          );
           setRr(calculatedRr);
 
           if (ppgBufferRef.current.ir.length % 150 === 0) {
@@ -1533,6 +1605,10 @@ const processReadQueue = useCallback(() => {
             if (cancelled) { O2Ring.stopPpgCapture().catch(() => {}); return; }
             ppgDirRef.current = dir;
             console.log("[PPG] continuous capture started, chunks in", dir);
+
+            // Reset calibration counter and timestamps for the new recording session
+            resetSessionCalibration();
+
             flushPpgChunks(); // upload anything left from an earlier session
           } catch (e) {
             console.warn("[PPG] could not start capture:", e);
@@ -1613,6 +1689,9 @@ const processReadQueue = useCallback(() => {
       sbp,
       dbp,
       isBpStabilizing,
+      calibrationTimes,
+      calibrationCount,
+      addCalibrationTimestamp,
       pi,
       motion,
       realtimeUpdatedAt,

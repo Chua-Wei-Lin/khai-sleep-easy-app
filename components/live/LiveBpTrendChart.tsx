@@ -178,16 +178,25 @@ export default function LiveBpTrendChart({
               );
             })}
             {calibrationXs.map((cX, idx) => (
-              <Line
-                key={`calib-${idx}-${cX}`}
-                x1={cX}
-                x2={cX}
-                y1={0}
-                y2={height}
-                stroke="#F5A25D"
-                strokeWidth={2}
-                strokeDasharray="3,3"
-              />
+              <React.Fragment key={`calib-${idx}-${cX}`}>
+                <Line
+                  x1={cX}
+                  x2={cX}
+                  y1={0}
+                  y2={height}
+                  stroke="#F5A25D"
+                  strokeWidth={2}
+                  strokeDasharray="3,3"
+                />
+                <SvgText
+                  x={cX > width - 20 ? cX - 16 : cX + 3}
+                  y={11}
+                  fill="#F5A25D"
+                  fontSize={8}
+                  fontWeight="700">
+                  #{idx + 1}
+                </SvgText>
+              </React.Fragment>
             ))}
             {sbpResult.path !== "" && (
               <Path

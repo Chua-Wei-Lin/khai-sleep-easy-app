@@ -115,6 +115,8 @@ export default function Home() {
     sbp,
     dbp,
     isBpStabilizing,
+    calibrationTimes: contextCalibTimes,
+    calibrationCount: contextCalibCount,
     pi,
     motion,
     realtimeUpdatedAt,
@@ -227,21 +229,27 @@ export default function Home() {
   const [calibrationTimes, setCalibrationTimes] = useState<number[]>([]);
   const [calibrationCount, setCalibrationCount] = useState<number>(0);
 
+  const effectiveCalibTimes = contextCalibTimes ?? calibrationTimes;
+  const effectiveCalibCount = contextCalibCount ?? calibrationCount;
+
   useFocusEffect(
     useCallback(() => {
       AsyncStorage.getItem(BP_CALIBRATION_KEY).then((stored) => {
         if (stored) {
           try {
             const parsed = JSON.parse(stored);
-            if (parsed.calibrationTime != null) {
-              setCalibrationTime(parsed.calibrationTime);
-            }
-            if (Array.isArray(parsed.calibrationTimes)) {
+            if (Array.isArray(parsed.calibrationTimes) && parsed.calibrationTimes.length > 0) {
               setCalibrationTimes(parsed.calibrationTimes);
               setCalibrationCount(parsed.calibrationTimes.length);
+              setCalibrationTime(parsed.calibrationTimes[parsed.calibrationTimes.length - 1] ?? null);
             } else if (parsed.calibrationTime != null) {
               setCalibrationTimes([parsed.calibrationTime]);
               setCalibrationCount(1);
+              setCalibrationTime(parsed.calibrationTime);
+            } else {
+              setCalibrationTimes([]);
+              setCalibrationCount(0);
+              setCalibrationTime(null);
             }
           } catch {}
         }
@@ -528,11 +536,11 @@ export default function Home() {
                     />
                   </View>
                 </Pressable>
-                <View style={{ marginLeft: 10, flex: 1, flexShrink: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.text }} numberOfLines={1} adjustsFontSizeToFit>
+                <View style={{ marginLeft: 10, flexShrink: 1, justifyContent: "center" }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.text }} numberOfLines={1}>
                     {getDisplayName(connectedDevice?.name, connectedDevice?.model)}
                   </Text>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: C.tint, marginTop: 2 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: C.tint, marginTop: 2 }} numberOfLines={1}>
                     {t("connected")}
                   </Text>
                 </View>
@@ -659,8 +667,8 @@ export default function Home() {
                     dbpPoints={dbpSeries}
                     height={38}
                     calibrationTime={calibrationTime}
-                    calibrationTimes={calibrationTimes}
-                    calibrationCount={calibrationCount}
+                    calibrationTimes={effectiveCalibTimes}
+                    calibrationCount={effectiveCalibCount}
                     extraHeaderLabel={effectiveStabilizing ? "Stabilizing..." : undefined}
                   />
                 )}
@@ -733,8 +741,8 @@ export default function Home() {
                           dbpPoints={dbpSeries}
                           height={48}
                           calibrationTime={calibrationTime}
-                          calibrationTimes={calibrationTimes}
-                          calibrationCount={calibrationCount}
+                          calibrationTimes={effectiveCalibTimes}
+                          calibrationCount={effectiveCalibCount}
                           extraHeaderLabel={effectiveStabilizing ? "Stabilizing..." : undefined}
                         />
                       </View>

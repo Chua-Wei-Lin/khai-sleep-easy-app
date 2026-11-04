@@ -1,15 +1,15 @@
-# Multiple Calibration Timestamps & Counter Walkthrough
+# Permanent Calibration Reset Walkthrough
 
-Successfully implemented support for **Multiple Calibration Timestamps** and a **Calibration Counter Badge** across [BpCalibration.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/BpCalibration.tsx), [index.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/home/index.tsx), and [LiveBpTrendChart.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/components/live/LiveBpTrendChart.tsx).
+Successfully resolved the resurrecting calibration timestamp glitch in [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx) and [index.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/home/index.tsx).
 
 ## Changes Made
 
-### Calibration Settings (`BpCalibration.tsx`)
-- Appends each calibration timestamp into a `calibrationTimes` array in `AsyncStorage` (`settings:bp_calibration`), preserving all calibration events in the current session.
+### O2Ring Provider (`O2RingProvider.tsx`)
+- **Explicit `calibrationTime: null` Reset**: Updated `resetSessionCalibration()` to explicitly wipe `calibrationTime: null`, `calibrationTimes: []`, and `calibrationCount: 0` in `AsyncStorage` and React Context upon new device connection and recording start.
+- **Immediate Execution**: Triggers `resetSessionCalibration()` immediately upon `addConnectedListener` and `startPpgCapture`.
 
-### Home Screen & Live BP Chart (`index.tsx` & `LiveBpTrendChart.tsx`)
-- **Multiple Vertical Lines**: Renders an orange dashed vertical line for **every** calibration event that falls within the current chart time window.
-- **Calibration Counter Badge**: Displays a clean `Calib #2` (or `Calib #N`) badge in the blood pressure card header so the user can see at a glance how many times calibration has been performed.
+### Home Screen (`app/(tabs)/home/index.tsx`)
+- **Null-Check Handling**: Updated `useFocusEffect` to handle `calibrationTime: null` cleanly without resurrecting old timestamps.
 
 ## Verification Results
-- Calibrating multiple times preserves all timestamps and displays vertical dashed lines for each calibration event alongside a `Calib #N` counter badge!
+- Connecting to a device or starting a new recording now permanently and immediately resets the calibration counter on screen without resurrecting old timestamps or requiring page navigation!
