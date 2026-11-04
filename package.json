@@ -1,6 +1,6 @@
 {
   "name": "sleep-easy-app",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "main": "expo-router/entry",
   "workspaces": [
     "packages/*"

@@ -854,10 +854,6 @@ class ViatomModule : Module() {
                             ev("immediate setCalibrationNative error: ${e.message}")
                         }
                     }
-                                ev("immediate setCalibrationNative error: ${e.message}")
-                            }
-                        }
-                    }
 
                     // Quality Gate: Only process BP calculations when Signal Quality Index is sufficient
                     if (sqi >= 0.5) {
