@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   },
   cardLabel: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "600",
   },
 });

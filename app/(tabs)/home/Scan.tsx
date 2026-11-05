@@ -83,27 +83,30 @@ function DeviceRow({ item, onPress, disabled, connecting }: DeviceRowProps) {
       ]}
       activeOpacity={0.8}
       disabled={disabled}>
-      <View style={{ backgroundColor: "#ffffff", borderRadius: 8, padding: 4, marginRight: 10 }}>
+      <View key="row-icon" style={{ backgroundColor: "#ffffff", borderRadius: 8, padding: 4, marginRight: 10 }}>
         <Image
+          key={item.mac}
           source={getDeviceImage(item.name, item.model)}
           style={{ width: 36, height: 36 }}
           resizeMode="contain"
         />
       </View>
-      <View style={{ flex: 1, marginRight: 8 }}>
+      <View key="row-text" style={{ flex: 1, marginRight: 8 }}>
         <Text style={{ fontSize: 14, fontWeight: "600", color: C.white }} numberOfLines={1}>
           {getDisplayName(item.name, item.model)}
         </Text>
       </View>
-      {connecting ? (
-        <ActivityIndicator color={C.white} />
-      ) : (
+      <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+        {connecting && (
+          <ActivityIndicator style={StyleSheet.absoluteFill} color={C.white} size="small" />
+        )}
         <MaterialCommunityIcons
           name="chevron-right"
           color={C.white}
           size={24}
+          style={{ opacity: connecting ? 0 : 1 }}
         />
-      )}
+      </View>
     </TouchableOpacity>
   );
 }

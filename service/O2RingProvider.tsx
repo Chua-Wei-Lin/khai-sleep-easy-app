@@ -202,6 +202,8 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const autoReconnectScanTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectingRef = React.useRef(false);
   const autoConnectingRef = React.useRef(false);
+  const isManualConnectingRef = React.useRef(false);
+  const lastDisconnectLogTime = React.useRef(0);
   const autoReconnectEnabled = React.useRef(true);
   const isDownloadingHistoryRef = React.useRef(false);
   const totalFilesToDownload = React.useRef(0);
@@ -516,6 +518,9 @@ const processReadQueue = useCallback(() => {
     }
 
     // Must have a device
+    if (!connectedDeviceRef.current && connectedDevice) {
+      connectedDeviceRef.current = connectedDevice;
+    }
     if (!connectedDeviceRef.current) {
       console.warn("startRealtime: no connected device yet");
       return Promise.resolve(false);
@@ -625,8 +630,35 @@ const processReadQueue = useCallback(() => {
   }, []);
 
   useEffect(() => {
-    const subConn = O2Ring.addConnectedListener(async (e) => {
+    const subConn = O2Ring.addConnectedListener(async (e: any) => {
       console.log("[O2Ring] onConnected event received:", e);
+
+      // Verify true reachability to filter out Android BLE phantom connections for offline devices
+      try {
+        const infoPromise = O2Ring.getInfo();
+        const infoTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Device offline")), 3000)
+        );
+        await Promise.race([infoPromise, infoTimeout]);
+      } catch (err) {
+        console.warn("[O2Ring] Phantom connection detected for offline device. Disconnecting...");
+        intentionalDisconnectRef.current = true;
+        await O2Ring.disconnect().catch(() => {});
+        intentionalDisconnectRef.current = false;
+        return;
+      }
+
+      const mac = e?.mac || e?.device?.mac;
+      const model = e?.model ?? e?.device?.model ?? 4;
+      if (mac) {
+        const recoveredDevice = {
+          mac,
+          name: e?.name || e?.device?.name || connectedDeviceRef.current?.name || "O2Device",
+          model
+        };
+        connectedDeviceRef.current = recoveredDevice;
+        setConnectedDevice(recoveredDevice);
+      }
       resetSessionCalibration();
       serviceReadyRef.current = true;
       setServiceReady(true);
@@ -932,29 +964,38 @@ const processReadQueue = useCallback(() => {
       });
 
       subDisc = O2Ring.addDisconnectedListener((evt) => {
+        const isProgrammatic = isManualConnectingRef.current || intentionalDisconnectRef.current || evt?.reason === 10 || evt?.reason === 0;
+
+        if (isProgrammatic) {
+          const now = Date.now();
+          if (now - lastDisconnectLogTime.current > 2000) {
+            lastDisconnectLogTime.current = now;
+            console.log("[O2Ring] Intentional or programmatic disconnect (reason: " + (evt?.reason ?? 0) + "). Cleaning up state.");
+          }
+        }
+
         const prevDevice = connectedDeviceRef.current;
-        const wasIntentional = intentionalDisconnectRef.current;
-        const isUnexpectedReason = evt?.reason != null && evt.reason > 0;
-        ppgBufferRef.current = { ir: [], red: [], motion: [] };
-        const isConnecting = connectingRef.current;
+        const wasIntentional = intentionalDisconnectRef.current || isProgrammatic;
+        const isUnexpectedReason = evt?.reason != null && evt.reason > 0 && evt?.reason !== 10;
+        const isConnecting = connectingRef.current || isManualConnectingRef.current;
 
         if (!wasIntentional && isUnexpectedReason && !isConnecting && prevDevice) {
           setOfflineDevice(prevDevice);
           console.log(`[O2Ring] Unexpected signal drop (reason: ${evt.reason}). Initiating overnight auto-reconnect safeguard...`);
 
           const attemptReconnect = async (retryCount: number) => {
-            if (connectedDeviceRef.current || intentionalDisconnectRef.current) return;
+            if (connectedDeviceRef.current || intentionalDisconnectRef.current || isManualConnectingRef.current) return;
             console.log(`[O2Ring Safeguard] Reconnect attempt ${retryCount} for ${prevDevice.name}...`);
             try {
               const ok = await connectToDevice(prevDevice);
               if (ok) {
                 console.log("[O2Ring Safeguard] Successfully reconnected after unexpected disconnect!");
-              } else if (retryCount < 25 && !intentionalDisconnectRef.current) {
+              } else if (retryCount < 25 && !intentionalDisconnectRef.current && !isManualConnectingRef.current) {
                 setTimeout(() => attemptReconnect(retryCount + 1), 10000);
               }
             } catch (err) {
               console.warn(`[O2Ring Safeguard] Reconnect attempt ${retryCount} failed:`, err);
-              if (retryCount < 25 && !intentionalDisconnectRef.current) {
+              if (retryCount < 25 && !intentionalDisconnectRef.current && !isManualConnectingRef.current) {
                 setTimeout(() => attemptReconnect(retryCount + 1), 10000);
               }
             }
@@ -1219,6 +1260,7 @@ const processReadQueue = useCallback(() => {
       async (device: DeviceItem) => {
         // Any manual connect should re-enable auto-reconnect until the user explicitly disconnects again.
         resetSessionCalibration();
+        isManualConnectingRef.current = true;
         autoReconnectEnabled.current = true;
         setConnecting(true);
         connectingRef.current = true;
@@ -1258,7 +1300,31 @@ const processReadQueue = useCallback(() => {
         serviceReadyRef.current = false;
         setIosRealtimeReady(false);
         console.log("[O2Ring] connecting", device.name, "model:", device.model);
-        await O2Ring.connect(device.mac, device.model);
+
+        const connectPromise = O2Ring.connect(device.mac, device.model);
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Connection timed out. Please ensure the device is turned on and nearby.")), 12000)
+        );
+        await Promise.race([connectPromise, timeoutPromise]);
+
+        // Set connected ref early so listeners know
+        connectedDeviceRef.current = device;
+        setConnectedDevice(device);
+        rememberDevice(device);
+
+        // Verify true device reachability (detect Android phantom connections when device is off)
+        try {
+          const infoPromise = O2Ring.getInfo();
+          const infoTimeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Device is offline")), 5000)
+          );
+          await Promise.race([infoPromise, infoTimeout]);
+        } catch (err) {
+          await O2Ring.disconnect().catch(() => {});
+          connectedDeviceRef.current = null;
+          setConnectedDevice(null);
+          throw new Error("Device is turned off or unreachable. Please turn on your O2Ring.");
+        }
 
         // Apply saved BP calibration once upon successful connection
         AsyncStorage.getItem("settings:bp_calibration").then((stored) => {
@@ -1278,6 +1344,9 @@ const processReadQueue = useCallback(() => {
 
           return true;
         } catch (e: any) {
+          intentionalDisconnectRef.current = true;
+          await O2Ring.disconnect().catch(() => {});
+          intentionalDisconnectRef.current = false;
           console.error("ERROR@O2RingProvider.tsx/connectToDevice failed:", {
             message: e?.message,
             code: e?.code,
@@ -1287,6 +1356,10 @@ const processReadQueue = useCallback(() => {
           Alert.alert("Connection Failed", e?.message ?? "Failed to connect to device. Please try again.");
           return false;
         } finally {
+          setTimeout(() => {
+            isManualConnectingRef.current = false;
+          }, 3000);
+          intentionalDisconnectRef.current = false;
           setConnecting(false);
           connectingRef.current = false;
         }
@@ -1299,6 +1372,14 @@ const processReadQueue = useCallback(() => {
    */
   const disconnect = useCallback(async () => {
     try {
+      // Trigger a quick history check before disconnecting so any new recordings are pulled
+      if (serviceReadyRef.current && connectedDeviceRef.current) {
+        try {
+          await O2Ring.getInfo();
+          await new Promise((r) => setTimeout(r, 1500));
+        } catch {}
+      }
+
       intentionalDisconnectRef.current = true;
       await O2Ring.disconnect();
     } catch (e) {

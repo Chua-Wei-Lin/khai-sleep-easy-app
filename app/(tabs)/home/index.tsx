@@ -518,8 +518,9 @@ export default function Home() {
                   onPress={() =>
                     setKnownDeviceMenuVisible(!knownDeviceMenuVisible)
                   }>
-                  <View style={{ backgroundColor: "#ffffff", borderRadius: 12, padding: 6 }}>
+                  <View style={{ backgroundColor: "#ffffff", borderRadius: 8, padding: 6 }}>
                     <Image
+                      key={connectedDevice?.mac ?? "connected-device-image"}
                       source={getDeviceImage(connectedDevice?.name, connectedDevice?.model)}
                       resizeMode="contain"
                       style={{
@@ -627,6 +628,7 @@ export default function Home() {
               <>
                 {visibleCharts.spo2 && (
                   <LiveTrendChart
+                    key="chart-spo2"
                     title="Oxygen Level"
                     unit="%"
                     currentLabel={displaySpo2}
@@ -643,6 +645,7 @@ export default function Home() {
 
                 {visibleCharts.pr && (
                   <LiveTrendChart
+                    key="chart-pr"
                     title="Pulse Rate"
                     unit="bpm"
                     currentLabel={displayPr}
@@ -659,6 +662,7 @@ export default function Home() {
 
                 {visibleCharts.bp && (
                   <LiveBpTrendChart
+                    key="chart-bp"
                     title="Blood Pressure"
                     unit="mmHg"
                     currentSbp={displaySbp}
@@ -675,6 +679,7 @@ export default function Home() {
 
                 {visibleCharts.rr && (
                   <LiveTrendChart
+                    key="chart-rr"
                     title="Resp. Rate"
                     unit="bpm"
                     currentLabel={displayRr}
@@ -692,6 +697,7 @@ export default function Home() {
 
                 {visibleCharts.motion && (
                   <LiveMotionBarChart
+                    key="chart-motion"
                     title="Motion"
                     currentLabel={displayMotion}
                     points={motionSeries}
@@ -701,6 +707,7 @@ export default function Home() {
 
                 {visibleCharts.ppg && (
                   <LivePpgWave
+                    key="chart-ppg"
                     active={isRealtimeReady}
                     title="PPG"
                     waitingText={t("waitingForSignal")}
@@ -712,10 +719,11 @@ export default function Home() {
               // Format 2: 2-Column Grid (Bigger charts)
               <>
                 {(visibleCharts.spo2 || visibleCharts.bp) && (
-                  <View style={styles.gridRow}>
+                  <View key="row-1" style={styles.gridRow}>
                     {visibleCharts.spo2 && (
                       <View style={styles.gridCol}>
                         <LiveTrendChart
+                          key="grid-spo2"
                           title="Oxygen Level"
                           unit="%"
                           currentLabel={displaySpo2}
@@ -733,6 +741,7 @@ export default function Home() {
                     {visibleCharts.bp && (
                       <View style={styles.gridCol}>
                         <LiveBpTrendChart
+                          key="grid-bp"
                           title="Blood Pressure"
                           unit="mmHg"
                           currentSbp={displaySbp}
@@ -751,10 +760,11 @@ export default function Home() {
                 )}
 
                 {(visibleCharts.pr || visibleCharts.rr) && (
-                  <View style={styles.gridRow}>
+                  <View key="row-2" style={styles.gridRow}>
                     {visibleCharts.pr && (
                       <View style={styles.gridCol}>
                         <LiveTrendChart
+                          key="grid-pr"
                           title="Pulse Rate"
                           unit="bpm"
                           currentLabel={displayPr}
@@ -772,6 +782,7 @@ export default function Home() {
                     {visibleCharts.rr && (
                       <View style={styles.gridCol}>
                         <LiveTrendChart
+                          key="grid-rr"
                           title="Resp. Rate"
                           unit="bpm"
                           currentLabel={displayRr}
@@ -791,10 +802,11 @@ export default function Home() {
                 )}
 
                 {(visibleCharts.motion || visibleCharts.ppg) && (
-                  <View style={styles.gridRow}>
+                  <View key="row-3" style={styles.gridRow}>
                     {visibleCharts.motion && (
                       <View style={styles.gridCol}>
                         <LiveMotionBarChart
+                          key="grid-motion"
                           title="Motion"
                           currentLabel={displayMotion}
                           points={motionSeries}
@@ -805,6 +817,7 @@ export default function Home() {
                     {visibleCharts.ppg && (
                       <View style={styles.gridCol}>
                         <LivePpgWave
+                          key="grid-ppg"
                           active={isRealtimeReady}
                           title="PPG"
                           waitingText={t("waitingForSignal")}

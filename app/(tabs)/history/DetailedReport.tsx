@@ -12,14 +12,24 @@ import {
   Alert,
   TextInput,
   ScrollView,
+  Pressable,
+  Share,
+  Platform,
+  ToastAndroid,
 } from "react-native";
 import { CartesianChart, Line } from "victory-native";
 import { File as ExpoFile } from "expo-file-system";
 import { useTranslation } from "react-i18next";
-import { getO2dataDir } from "../../../service/History";
+import { getO2dataDir, uploadCsv } from "../../../service/History";
+import { generateAndReturnPdfUri } from "../../../service/PdfReportGenerator";
+import * as Sharing from "expo-sharing";
+import { API_DEV, API_PROD } from "@env";
 import { useFont } from "@shopify/react-native-skia";
 
-type Row = { t: number; spo2: number; pr: number }; // ms timestamp, SpO2, Pulse
+const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
+const baseURL = rawBase?.replace(/\/+$/, "");
+
+type Row = { t: number; spo2: number; pr: number; motion?: number }; // ms timestamp, SpO2, Pulse, Motion
 type PpgRow = { index: number; ppg: number }; // Sample Index, Raw PPG Value
 
 const { height } = Dimensions.get("window");
@@ -106,6 +116,7 @@ function parseCsvToRows(csvText: string): Row[] {
   const idxTime = header.findIndex((h) => /^time$/i.test(h));
   const idxSpO2 = header.findIndex((h) => /^oxygen level$/i.test(h));
   const idxPR = header.findIndex((h) => /^pulse rate$/i.test(h));
+  const idxMotion = header.findIndex((h) => /^motion$/i.test(h));
   if (idxTime === -1 || idxSpO2 === -1 || idxPR === -1) return [];
 
   const out: Row[] = [];
@@ -116,15 +127,17 @@ function parseCsvToRows(csvText: string): Row[] {
     const timeStr = (cols[idxTime] ?? "").trim();
     const spo2Str = (cols[idxSpO2] ?? "").trim();
     const prStr = (cols[idxPR] ?? "").trim();
+    const motionStr = idxMotion !== -1 ? (cols[idxMotion] ?? "").trim() : "";
 
     const toNum = (s: string) => Number((s.match(/[\d.]+/) ?? [""])[0]);
 
     const t = parseNonISOTime(timeStr);
     const spo2 = toNum(spo2Str);
     const pr = toNum(prStr);
+    const motion = toNum(motionStr);
 
     if (t != null && !Number.isNaN(spo2) && !Number.isNaN(pr)) {
-      out.push({ t, spo2, pr });
+      out.push({ t, spo2, pr, motion: !Number.isNaN(motion) ? motion : undefined });
     }
   }
   return out;
@@ -174,11 +187,170 @@ export default function DetailedReport() {
 
   const isPpg = useMemo(() => id?.toLowerCase().includes("ppg") ?? false, [id]);
 
+  // Load saved notes for this report on mount
+  useEffect(() => {
+    if (!id) return;
+    AsyncStorage.getItem(`report_note_${id}`).then((stored) => {
+      if (stored) setNotes(stored);
+    }).catch(() => {});
+  }, [id]);
+
+  const handleNotesChange = (val: string) => {
+    setNotes(val);
+    if (id) {
+      AsyncStorage.setItem(`report_note_${id}`, val).catch(() => {});
+    }
+  };
+
+  const handleServerUpload = async () => {
+    if (!id || !patientID) {
+      Alert.alert(t("error"), "Missing report information.");
+      return;
+    }
+    try {
+      setLoading(true);
+      if (!baseURL) {
+        Alert.alert(t("error"), "Server base URL is not configured.");
+        return;
+      }
+      const o2dataDir = getO2dataDir(patientID);
+      const csvFile = new ExpoFile(o2dataDir, id);
+
+      // 1. Upload CSV file
+      if (csvFile.exists === true) {
+        await uploadCsv({
+          patientId: patientID,
+          item: { id, uri: csvFile.uri },
+          baseURL,
+        });
+      }
+
+      // 2. Generate and upload PDF report
+      const validRows = rows ?? [];
+      const avgSpo2 = validRows.length > 0 ? validRows.reduce((acc, r) => acc + r.spo2, 0) / validRows.length : undefined;
+      const minSpo2 = validRows.length > 0 ? Math.min(...validRows.map((r) => r.spo2)) : undefined;
+      const avgPr = validRows.length > 0 ? validRows.reduce((acc, r) => acc + r.pr, 0) / validRows.length : undefined;
+      const startTime = validRows.length > 0 ? new Date(validRows[0].t).toLocaleString() : undefined;
+      const endTime = validRows.length > 0 ? new Date(validRows[validRows.length - 1].t).toLocaleString() : undefined;
+
+      const durationMs = validRows.length > 1 ? validRows[validRows.length - 1].t - validRows[0].t : 0;
+      const durationSec = Math.floor(durationMs / 1000);
+      const hh = String(Math.floor(durationSec / 3600)).padStart(2, "0");
+      const mm = String(Math.floor((durationSec % 3600) / 60)).padStart(2, "0");
+      const ss = String(durationSec % 60).padStart(2, "0");
+      const durationStr = `${hh}:${mm}:${ss}`;
+
+      const pdfUri = await generateAndReturnPdfUri({
+        id,
+        patientId: patientID,
+        patientName,
+        patientAge,
+        patientSex,
+        startTime,
+        endTime,
+        duration: durationStr,
+        notes,
+        rows: validRows,
+      });
+
+      if (pdfUri) {
+        const pdfFileName = `Report_${id.replace(/\.csv$/i, "")}.pdf`;
+        await uploadCsv({
+          patientId: patientID,
+          item: { id: pdfFileName, uri: pdfUri },
+          baseURL,
+        });
+      }
+
+      if (Platform.OS === "android") {
+        ToastAndroid.show("CSV & PDF report uploaded to server successfully.", ToastAndroid.SHORT);
+      } else {
+        Alert.alert("Success", "CSV & PDF report uploaded to server successfully.");
+      }
+    } catch (e: any) {
+      console.error("Server upload error:", e);
+      Alert.alert(t("error"), e?.message ?? "Failed to upload report to server.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!id || !patientID) {
+      Alert.alert(t("error"), "Missing report information.");
+      return;
+    }
+    try {
+      setLoading(true);
+
+      const validRows = rows ?? [];
+      const avgSpo2 = validRows.length > 0 ? validRows.reduce((acc, r) => acc + r.spo2, 0) / validRows.length : undefined;
+      const minSpo2 = validRows.length > 0 ? Math.min(...validRows.map((r) => r.spo2)) : undefined;
+      const avgPr = validRows.length > 0 ? validRows.reduce((acc, r) => acc + r.pr, 0) / validRows.length : undefined;
+      const startTime = validRows.length > 0 ? new Date(validRows[0].t).toLocaleString() : undefined;
+      const endTime = validRows.length > 0 ? new Date(validRows[validRows.length - 1].t).toLocaleString() : undefined;
+
+      const durationMs = validRows.length > 1 ? validRows[validRows.length - 1].t - validRows[0].t : 0;
+      const durationSec = Math.floor(durationMs / 1000);
+      const hh = String(Math.floor(durationSec / 3600)).padStart(2, "0");
+      const mm = String(Math.floor((durationSec % 3600) / 60)).padStart(2, "0");
+      const ss = String(durationSec % 60).padStart(2, "0");
+      const durationStr = `${hh}:${mm}:${ss}`;
+
+      const pdfUri = await generateAndReturnPdfUri({
+        id,
+        patientId: patientID,
+        patientName,
+        patientAge,
+        patientSex,
+        startTime,
+        endTime,
+        duration: durationStr,
+        notes,
+        rows: validRows,
+      });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(pdfUri, {
+          mimeType: "application/pdf",
+          dialogTitle: `Sleep Easy O2Ring Report - ${id}`,
+          UTI: "com.adobe.pdf",
+        });
+      }
+    } catch (e: any) {
+      console.error("DetailedReport export error:", e);
+      if (e?.message?.includes("cancel") || e?.code === "ERR_SHARING_CANCELED") {
+        return;
+      }
+      Alert.alert(t("error"), e?.message ?? "Failed to export PDF.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [patientName, setPatientName] = useState<string>("Patient");
+  const [patientAge, setPatientAge] = useState<string>("N/A");
+  const [patientSex, setPatientSex] = useState<string>("N/A");
+
   useEffect(() => {
     (async () => {
       try {
         const storedId = await AsyncStorage.getItem("patientID");
         if (storedId) setPatientID(storedId);
+
+        const patientDataStr = await AsyncStorage.getItem("patientData");
+        if (patientDataStr) {
+          const p = JSON.parse(patientDataStr);
+          if (p.name) setPatientName(p.name);
+          if (p.birthdate) {
+            const dob = new Date(p.birthdate);
+            const diff = Date.now() - dob.getTime();
+            const ageDate = new Date(diff);
+            const calculatedAge = Math.abs(ageDate.getUTCFullYear() - 1970);
+            setPatientAge(`${calculatedAge} (${p.birthdate})`);
+          }
+          if (p.sex || p.gender) setPatientSex(p.sex || p.gender);
+        }
       } catch (error) {
         console.warn("Error@DetailedReport.tsx/useEffect:", error);
       }
@@ -403,13 +575,29 @@ export default function DetailedReport() {
           ]}>
           <TextInput
             value={notes}
-            onChangeText={setNotes}
+            onChangeText={handleNotesChange}
             placeholder={t("notes")}
             placeholderTextColor={C.sub}
             autoCapitalize="none"
             underlineColorAndroid={"transparent"}
             style={{ color: C.text }}
           />
+        </View>
+
+        <View style={styles.buttonRow}>
+          <Pressable
+            style={[styles.actionButton, { backgroundColor: C.tint, flex: 1, marginRight: 8 }]}
+            onPress={handleServerUpload}
+            activeOpacity={0.85}>
+            <Text style={[F.buttonText, { color: C.white, fontSize: 13 }]}>Upload to Server</Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.actionButton, { backgroundColor: C.tint, flex: 1, marginLeft: 8 }]}
+            onPress={handleExportPdf}
+            activeOpacity={0.85}>
+            <Text style={[F.buttonText, { color: C.white, fontSize: 13 }]}>Export PDF & Share</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -419,7 +607,7 @@ export default function DetailedReport() {
 const styles = StyleSheet.create({
   chartContainer: {
     width: "100%",
-    height: height * 0.35,
+    height: height * 0.22,
     paddingBottom: 10,
   },
   notesTitleContainer: { paddingHorizontal: 5, marginTop: 12, marginBottom: 8 },
@@ -431,5 +619,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    marginTop: 16,
+    width: "100%",
+  },
+  actionButton: {
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

@@ -105,9 +105,11 @@ export default function History() {
         if (!f.name.toLowerCase().endsWith(".csv")) continue;
         if (f.name.startsWith("PPG_Raw_")) continue;
 
+        const label = await getStartAndEndLabel(f);
+
         csvs.push({
           id: f.name,
-          label: formatFileName(f.name),
+          label,
           uploaded: false,
           uri: f.uri,
           isPpg: f.name.toLowerCase().includes("ppg"), // Add flag
@@ -251,6 +253,48 @@ export default function History() {
       setRefreshing(false);
     }
   }, [loadHistory, requestHistorySync]);
+
+  const getStartAndEndLabel = async (f: ExpoFile): Promise<string> => {
+    try {
+      const text = await f.text();
+      const lines = text.replace(/\r\n?/g, "\n").split("\n").filter(Boolean);
+      if (lines.length <= 2) return formatFileName(f.name);
+
+      const header = lines[0].split(",").map((h) => h.trim());
+      const idxTime = header.findIndex((h) => /^time$/i.test(h));
+      if (idxTime === -1) return formatFileName(f.name);
+
+      const firstCol = (lines[1].split(",")[idxTime] ?? "").trim();
+      const lastCol = (lines[lines.length - 1].split(",")[idxTime] ?? "").trim();
+
+      const cleanTime = (s: string) => {
+        const match = s.match(/(\d{2}:\d{2})/);
+        return match ? match[1] : s;
+      };
+
+      const startTime = cleanTime(firstCol);
+      const endTime = cleanTime(lastCol);
+
+      const base = f.name.replace(/\.csv$/i, "");
+      const parts = base.split("_");
+      const coreRaw = parts[parts.length - 1] ?? base;
+      const core = coreRaw.trim();
+      let dateStr = "";
+      if (/^\d{14}$/.test(core)) {
+        const y = core.slice(0, 4);
+        const m = core.slice(4, 6);
+        const d = core.slice(6, 8);
+        dateStr = `${y}-${m}-${d}`;
+      } else {
+        dateStr = firstCol.slice(0, 10);
+      }
+
+      if (startTime && endTime) {
+        return `${dateStr}  ${startTime} - ${endTime}`;
+      }
+    } catch {}
+    return formatFileName(f.name);
+  };
 
   /**
    * Format file name (for display not actually renaming)
