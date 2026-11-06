@@ -269,7 +269,10 @@ export default function DetailedReport() {
       }
     } catch (e: any) {
       console.error("Server upload error:", e);
-      Alert.alert(t("error"), e?.message ?? "Failed to upload report to server.");
+      const msg = e?.message?.includes("Network request failed") || e?.message?.includes("Network")
+        ? "Network request failed. Please check your connection or server URL."
+        : (e?.message ?? "Failed to upload report to server.");
+      Alert.alert("Upload Error", msg);
     } finally {
       setLoading(false);
     }
