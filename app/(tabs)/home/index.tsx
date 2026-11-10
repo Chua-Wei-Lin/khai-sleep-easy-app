@@ -554,7 +554,7 @@ export default function Home() {
                 ]}>
                 <MaterialCommunityIcons
                   name={batteryIconName}
-                  size={22}
+                  size={16}
                   color={batteryColor}
                 />
                 {batterySegments == null ? (
@@ -570,7 +570,7 @@ export default function Home() {
                           style={[
                             styles.batteryBlock,
                             {
-                              marginLeft: idx === 0 ? 0 : 3,
+                              marginLeft: idx === 0 ? 0 : 2,
                               backgroundColor:
                                 idx < batterySegments ? batteryColor : "transparent",
                               borderColor: batteryColor,
@@ -581,7 +581,7 @@ export default function Home() {
                       ))}
                     </View>
                     {battery != null && (
-                      <Text style={[styles.batteryText, { color: batteryColor, marginLeft: 6, fontSize: 12, fontWeight: "700" }]}>
+                      <Text style={[styles.batteryText, { color: batteryColor, marginLeft: 4, fontSize: 11, fontWeight: "700" }]}>
                         {battery}%
                       </Text>
                     )}
@@ -629,7 +629,7 @@ export default function Home() {
                 {visibleCharts.spo2 && (
                   <LiveTrendChart
                     key="chart-spo2"
-                    title="Oxygen Level"
+                    title="O2 Level"
                     unit="%"
                     currentLabel={displaySpo2}
                     avgLabel={t("avg")}
@@ -646,7 +646,7 @@ export default function Home() {
                 {visibleCharts.pr && (
                   <LiveTrendChart
                     key="chart-pr"
-                    title="Pulse Rate"
+                    title="PR"
                     unit="bpm"
                     currentLabel={displayPr}
                     avgLabel={t("avg")}
@@ -663,7 +663,7 @@ export default function Home() {
                 {visibleCharts.bp && (
                   <LiveBpTrendChart
                     key="chart-bp"
-                    title="Blood Pressure"
+                    title="BP"
                     unit="mmHg"
                     currentSbp={displaySbp}
                     currentDbp={displayDbp}
@@ -674,13 +674,14 @@ export default function Home() {
                     calibrationTimes={effectiveCalibTimes}
                     calibrationCount={effectiveCalibCount}
                     extraHeaderLabel={effectiveStabilizing ? "Stabilizing..." : undefined}
+                    onPressCalibration={() => router.push("/(tabs)/settings/BpCalibration")}
                   />
                 )}
 
                 {visibleCharts.rr && (
                   <LiveTrendChart
                     key="chart-rr"
-                    title="Resp. Rate"
+                    title="RR"
                     unit="bpm"
                     currentLabel={displayRr}
                     avgLabel={t("avg")}
@@ -724,7 +725,7 @@ export default function Home() {
                       <View style={styles.gridCol}>
                         <LiveTrendChart
                           key="grid-spo2"
-                          title="Oxygen Level"
+                          title="O2 Level"
                           unit="%"
                           currentLabel={displaySpo2}
                           avgLabel={t("avg")}
@@ -742,7 +743,7 @@ export default function Home() {
                       <View style={styles.gridCol}>
                         <LiveBpTrendChart
                           key="grid-bp"
-                          title="Blood Pressure"
+                          title="BP"
                           unit="mmHg"
                           currentSbp={displaySbp}
                           currentDbp={displayDbp}
@@ -753,6 +754,7 @@ export default function Home() {
                           calibrationTimes={effectiveCalibTimes}
                           calibrationCount={effectiveCalibCount}
                           extraHeaderLabel={effectiveStabilizing ? "Stabilizing..." : undefined}
+                          onPressCalibration={() => router.push("/(tabs)/settings/BpCalibration")}
                         />
                       </View>
                     )}
@@ -765,7 +767,7 @@ export default function Home() {
                       <View style={styles.gridCol}>
                         <LiveTrendChart
                           key="grid-pr"
-                          title="Pulse Rate"
+                          title="PR"
                           unit="bpm"
                           currentLabel={displayPr}
                           avgLabel={t("avg")}
@@ -783,7 +785,7 @@ export default function Home() {
                       <View style={styles.gridCol}>
                         <LiveTrendChart
                           key="grid-rr"
-                          title="Resp. Rate"
+                          title="RR"
                           unit="bpm"
                           currentLabel={displayRr}
                           avgLabel={t("avg")}
@@ -875,7 +877,8 @@ const styles = StyleSheet.create({
   titleLeft: {
     flexDirection: "row",
     alignItems: "center",
-    flexShrink: 1,
+    flex: 1,
+    marginRight: 6,
   },
 
   badge: {
@@ -921,25 +924,25 @@ const styles = StyleSheet.create({
   batteryChip: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
   batteryText: {
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: "700",
-    marginLeft: 8,
+    marginLeft: 4,
   },
   batteryBlocks: {
     flexDirection: "row",
     alignItems: "center",
-    marginLeft: 8,
+    marginLeft: 4,
   },
   batteryBlock: {
-    width: 8,
-    height: 12,
-    borderRadius: 2,
+    width: 4,
+    height: 9,
+    borderRadius: 1,
     borderWidth: StyleSheet.hairlineWidth,
   },
   card: {

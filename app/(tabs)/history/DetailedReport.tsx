@@ -16,7 +16,10 @@ import {
   Share,
   Platform,
   ToastAndroid,
+  Modal,
+  TouchableOpacity,
 } from "react-native";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { CartesianChart, Line } from "victory-native";
 import { File as ExpoFile } from "expo-file-system";
 import { useTranslation } from "react-i18next";
@@ -184,6 +187,17 @@ export default function DetailedReport() {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
   const [patientID, setPatientID] = useState<string>("");
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [selectedFormat, setSelectedFormat] = useState<"pdf" | "csv">("pdf");
+
+  const executeShare = async () => {
+    setShareModalVisible(false);
+    if (selectedFormat === "pdf") {
+      await handleExportPdf();
+    } else {
+      await handleExportCsv();
+    }
+  };
 
   const isPpg = useMemo(() => id?.toLowerCase().includes("ppg") ?? false, [id]);
 
@@ -326,6 +340,37 @@ export default function DetailedReport() {
         return;
       }
       Alert.alert(t("error"), e?.message ?? "Failed to export PDF.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    if (!id || !patientID) {
+      Alert.alert(t("error"), "Missing report information.");
+      return;
+    }
+    try {
+      setLoading(true);
+      const o2dataDir = getO2dataDir(patientID);
+      const csvFile = new ExpoFile(o2dataDir, id);
+      if (csvFile.exists === true) {
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(csvFile.uri, {
+            mimeType: "text/csv",
+            dialogTitle: `Sleep Easy CSV Report - ${id}`,
+            UTI: "public.comma-separated-values-text",
+          });
+        }
+      } else {
+        Alert.alert("Export Failed", "Raw CSV report file does not exist locally.");
+      }
+    } catch (e: any) {
+      console.error("DetailedReport CSV export error:", e);
+      if (e?.message?.includes("cancel") || e?.code === "ERR_SHARING_CANCELED") {
+        return;
+      }
+      Alert.alert(t("error"), e?.message ?? "Failed to export CSV.");
     } finally {
       setLoading(false);
     }
@@ -587,21 +632,83 @@ export default function DetailedReport() {
           />
         </View>
 
-        <View style={styles.buttonRow}>
-          <Pressable
-            style={[styles.actionButton, { backgroundColor: C.tint, flex: 1, marginRight: 8 }]}
-            onPress={handleServerUpload}
-            activeOpacity={0.85}>
-            <Text style={[F.buttonText, { color: C.white, fontSize: 13 }]}>Upload to Server</Text>
-          </Pressable>
+        <Pressable
+          style={[styles.actionButton, { backgroundColor: C.tint, width: "100%", marginBottom: 8 }]}
+          onPress={handleServerUpload}
+          activeOpacity={0.85}>
+          <Text style={[F.buttonText, { color: C.white, fontSize: 13 }]}>Upload to Server</Text>
+        </Pressable>
 
-          <Pressable
-            style={[styles.actionButton, { backgroundColor: C.tint, flex: 1, marginLeft: 8 }]}
-            onPress={handleExportPdf}
-            activeOpacity={0.85}>
-            <Text style={[F.buttonText, { color: C.white, fontSize: 13 }]}>Export PDF & Share</Text>
-          </Pressable>
-        </View>
+        <Pressable
+          style={[styles.actionButton, { backgroundColor: C.tint, width: "100%" }]}
+          onPress={() => setShareModalVisible(true)}
+          activeOpacity={0.85}>
+          <Text style={[F.buttonText, { color: C.white, fontSize: 13 }]}>Export & Share</Text>
+        </Pressable>
+
+        <Modal
+          visible={shareModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShareModalVisible(false)}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: C.bg2, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <Text style={{ fontSize: 18, fontWeight: "800", color: C.text }}>Share Blood Oxygen records</Text>
+                <TouchableOpacity onPress={() => setShareModalVisible(false)}>
+                  <Ionicons name="close-circle" size={24} color={C.sub} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontSize: 13, color: C.sub, marginBottom: 14 }}>Select format:</Text>
+
+              <View style={{ flexDirection: "row", gap: 12, marginBottom: 20 }}>
+                <Pressable
+                  onPress={() => setSelectedFormat("pdf")}
+                  style={{
+                    flex: 1,
+                    backgroundColor: C.card,
+                    borderWidth: selectedFormat === "pdf" ? 2 : StyleSheet.hairlineWidth,
+                    borderColor: selectedFormat === "pdf" ? C.tint : C.border,
+                    borderRadius: 14,
+                    padding: 16,
+                    alignItems: "center",
+                  }}>
+                  <MaterialCommunityIcons name="file-pdf-box" size={36} color="#E74C3C" style={{ marginBottom: 8 }} />
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.text, marginBottom: 8 }}>PDF</Text>
+                  <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: selectedFormat === "pdf" ? C.tint : C.sub, alignItems: "center", justifyContent: "center" }}>
+                    {selectedFormat === "pdf" && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.tint }} />}
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => setSelectedFormat("csv")}
+                  style={{
+                    flex: 1,
+                    backgroundColor: C.card,
+                    borderWidth: selectedFormat === "csv" ? 2 : StyleSheet.hairlineWidth,
+                    borderColor: selectedFormat === "csv" ? C.tint : C.border,
+                    borderRadius: 14,
+                    padding: 16,
+                    alignItems: "center",
+                  }}>
+                  <MaterialCommunityIcons name="file-delimited" size={36} color="#27AE60" style={{ marginBottom: 8 }} />
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.text, marginBottom: 8 }}>CSV</Text>
+                  <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: selectedFormat === "csv" ? C.tint : C.sub, alignItems: "center", justifyContent: "center" }}>
+                    {selectedFormat === "csv" && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: C.tint }} />}
+                  </View>
+                </Pressable>
+              </View>
+
+              <Pressable
+                style={[styles.actionButton, { backgroundColor: C.tint, width: "100%" }]}
+                onPress={executeShare}
+                activeOpacity={0.85}>
+                <Text style={[F.buttonText, { color: C.white, fontSize: 15 }]}>Share</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
     </SafeAreaView>
   );

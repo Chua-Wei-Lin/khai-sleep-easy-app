@@ -980,28 +980,8 @@ const processReadQueue = useCallback(() => {
         const isConnecting = connectingRef.current || isManualConnectingRef.current;
 
         if (!wasIntentional && isUnexpectedReason && !isConnecting && prevDevice) {
-          setOfflineDevice(prevDevice);
-          console.log(`[O2Ring] Unexpected signal drop (reason: ${evt.reason}). Initiating overnight auto-reconnect safeguard...`);
-
-          const attemptReconnect = async (retryCount: number) => {
-            if (connectedDeviceRef.current || intentionalDisconnectRef.current || isManualConnectingRef.current) return;
-            console.log(`[O2Ring Safeguard] Reconnect attempt ${retryCount} for ${prevDevice.name}...`);
-            try {
-              const ok = await connectToDevice(prevDevice);
-              if (ok) {
-                console.log("[O2Ring Safeguard] Successfully reconnected after unexpected disconnect!");
-              } else if (retryCount < 25 && !intentionalDisconnectRef.current && !isManualConnectingRef.current) {
-                setTimeout(() => attemptReconnect(retryCount + 1), 10000);
-              }
-            } catch (err) {
-              console.warn(`[O2Ring Safeguard] Reconnect attempt ${retryCount} failed:`, err);
-              if (retryCount < 25 && !intentionalDisconnectRef.current && !isManualConnectingRef.current) {
-                setTimeout(() => attemptReconnect(retryCount + 1), 10000);
-              }
-            }
-          };
-
-          setTimeout(() => attemptReconnect(1), 3000);
+          // Auto-reconnect disabled per user request
+          setOfflineDevice(null);
         } else {
           setOfflineDevice(null);
         }

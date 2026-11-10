@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { LayoutChangeEvent, StyleSheet, Text, View } from "react-native";
+import { LayoutChangeEvent, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { useTheme } from "../../theme/ThemeProvider";
+import { Ionicons } from "@expo/vector-icons";
 import type { SeriesPoint } from "./useReadingSeries";
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
   calibrationTime?: number | null;
   calibrationTimes?: number[];
   calibrationCount?: number;
+  onPressCalibration?: () => void;
 };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -36,6 +38,7 @@ export default function LiveBpTrendChart({
   calibrationTime,
   calibrationTimes,
   calibrationCount,
+  onPressCalibration,
 }: Props) {
   const { colors: C } = useTheme();
   const [width, setWidth] = useState(0);
@@ -119,9 +122,27 @@ export default function LiveBpTrendChart({
   return (
     <View style={[styles.card, { backgroundColor: C.bg2, borderColor: C.border }]}>
       <View style={styles.headRow}>
-        <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
+          <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>
+            {title}
+          </Text>
+          {onPressCalibration && (
+            <TouchableOpacity
+              onPress={onPressCalibration}
+              style={{
+                marginLeft: 6,
+                padding: 4,
+                backgroundColor: "transparent",
+                borderRadius: 6,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              activeOpacity={0.7}
+              accessibilityLabel="Fine tune calibration">
+              <Ionicons name="settings-outline" size={16} color={C.text} />
+            </TouchableOpacity>
+          )}
+        </View>
         <View style={styles.legendRow}>
           {extraHeaderLabel ? (
             <Text style={[styles.legendText, { color: "#F5A25D" }]} numberOfLines={1}>{extraHeaderLabel}</Text>
@@ -129,7 +150,7 @@ export default function LiveBpTrendChart({
             <>
               {calibrationCount != null && calibrationCount > 0 && (
                 <Text style={[styles.legendText, { color: "#F5A25D", marginRight: 6 }]} numberOfLines={1}>
-                  Calib #{calibrationCount}
+                  C #{calibrationCount}
                 </Text>
               )}
               <Text style={[styles.legendText, { color: "#E74C3C" }]} numberOfLines={1}>S:{currentSbp}</Text>
@@ -189,7 +210,7 @@ export default function LiveBpTrendChart({
                   fill="#F5A25D"
                   fontSize={8}
                   fontWeight="700">
-                  #{idx + 1}
+                  C #{idx + 1}
                 </SvgText>
               </React.Fragment>
             ))}
