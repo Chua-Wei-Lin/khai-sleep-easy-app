@@ -302,6 +302,25 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
       "motion": Int(realData.vector),
       "ts": Int(Date().timeIntervalSince1970 * 1000)
     ])
+
+    var waveValues: [Int] = []
+    let wf = realData.waveform
+    withUnsafeBytes(of: wf.wave_data) { ptr in
+      let buffer = ptr.bindMemory(to: Int16.self)
+      for i in 0..<min(buffer.count, 50) {
+        let val = Int(buffer[i])
+        if val != 0 {
+          waveValues.append(val)
+        }
+      }
+    }
+
+    if !waveValues.isEmpty {
+      emit("onPpgPacket", [
+        "samples": waveValues,
+        "ts": Int(Date().timeIntervalSince1970 * 1000)
+      ])
+    }
   }
 
   @objc(realDataCallBackWithData:originalData:)

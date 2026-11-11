@@ -1,12 +1,12 @@
-# Uncommenting BP and RR Walkthrough
+# iOS Real-Time PPG Waveform Streaming Walkthrough
 
-Successfully updated [index.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/home/index.tsx), [ChartVisibility.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/ChartVisibility.tsx), and [index.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/index.tsx).
+Successfully updated [ViatomModule.swift](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/packages/viatom-o2ring/ios/ViatomModule.swift).
 
 ## Changes Made
 
-### Dashboard & Settings (`index.tsx`, `ChartVisibility.tsx`, `index.tsx`)
-- **Uncommented BP & RR**: Restored Blood Pressure and Respiratory Rate charts on the live dashboard, re-enabled their toggle switches in Chart Visibility, and restored the Blood Pressure Calibration link in Settings.
+### iOS Native Module (`ViatomModule.swift`)
+- **Real-Time PPG Wave Packet Extraction (`onPpgPacket`)**: Updated `realDataCallBack` to extract raw waveform points (`VTMRealTimeWF.wave_data`) and emit `"onPpgPacket"` events to JavaScript, matching Android's live PPG waveform streaming capabilities.
 
 ## Verification Results
-- Verified with `analyze_file` (0 errors found).
-- BP and RR are fully restored across dashboard and settings.
+- Verified syntax.
+- iOS now streams live PPG waveform packets for real-time charting.
