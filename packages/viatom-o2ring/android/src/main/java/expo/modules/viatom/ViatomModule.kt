@@ -945,8 +945,6 @@ class ViatomModule : Module() {
                             lastDbp = smoothedDbp + (timeJitter * 0.5)
                         }
                     }
-                        }
-                    }
                 }
             } catch (e: Exception) {
                 Log.w("MegaBp", "stepNative error", e)

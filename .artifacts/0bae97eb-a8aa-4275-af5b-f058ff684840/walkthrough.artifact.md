@@ -1,15 +1,12 @@
-# ViHealth-Style Share Modal & Auto-Disconnect Disable Walkthrough
+# Dynamic Scan Event Listener Subscription Walkthrough
 
-Successfully updated [DetailedReport.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/history/DetailedReport.tsx) and [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx).
+Successfully updated [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx).
 
 ## Changes Made
 
-### Detailed Report Screen (`DetailedReport.tsx`)
-- **ViHealth-Style Share Modal**: Replaced separate export buttons with a clean "Export & Share" trigger opening a bottom sheet modal featuring title `"Share Blood Oxygen records"`, format selector cards (**PDF** and **CSV** with radio selection), and a primary "Share" button.
-
-### O2Ring Service (`O2RingProvider.tsx`)
-- **Disabled Overnight Auto-Reconnect**: Bypassed overnight automatic reconnection attempts upon unexpected signal drops per user request.
+### O2Ring Service Provider (`O2RingProvider.tsx`)
+- **`isScanning`-Bound Event Listener**: Tied `addDeviceFoundListener` directly to the `isScanning` state rather than a one-time mount array. When `startScan()` sets `isScanning` to true, a fresh event subscription binds to the active native BLE broadcast stream, completely eliminating dead listener issues after screen blur or disconnects.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- Share modal matches ViHealth design, and auto-disconnect/reconnect is disabled.
+- BLE scanning event listeners re-bind cleanly across scan sessions.

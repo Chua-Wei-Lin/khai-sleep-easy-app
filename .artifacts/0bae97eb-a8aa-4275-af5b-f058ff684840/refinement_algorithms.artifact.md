@@ -28,25 +28,27 @@ This document provides a rigorous mathematical and technical specification detai
 
 To counteract optical noise, motion artifacts, and physiological transients, several advanced algorithmic safeguards are enforced:
 
-### 2.1 Signal Quality Index (SQI) Gating
-- **Mechanism**: Evaluates the signal-to-noise ratio (SNR), Perfusion Index ($\text{PI}$), and morphological consistency of incoming PPG beats.
-- **Refinement**: Frames where $\text{SQI} < 0.6$ or $\text{PI} < 0.4\%$ are instantly rejected. This prevents motion artifacts or weak peripheral pulses from generating erratic BP or RR spikes.
+### 2.1 Dynamic AC/DC Ratio Re-Normalization Against the Anchor
+- **Mechanism**: Prevents optical drift creep and step-down calibration drops caused by minor ring rotation or micro-motion.
+- **Refinement**: Incoming raw C++ estimates are continuously re-normalized against the user's calibration anchor using a leaky anchor pull ($\beta = 0.85$):
+  $$\text{Ratio}_{\text{corrected}}(t) = 0.85 \cdot \text{Ratio}_{\text{corrected}}(t-1) + 0.15 \cdot \left(\frac{\text{rawCppSbp}}{\text{currentCalibSbp}}\right)$$
 
-### 2.2 Implied Ratio Multiplier Clamping
-- **Mechanism**: Prevents optical drift creep and step-down calibration drops during long-term monitoring.
-- **Refinement**: Implied calibration ratio multipliers are strictly clamped:
-  $$0.85 \le \text{Ratio} \le 1.15$$
-  Any calculated ratio exceeding these bounds is clamped to the nearest threshold, keeping estimated blood pressure anchored within realistic physiological limits.
+### 2.2 Perfusion Compensation Factor
+- **Mechanism**: Neutralizes amplitude swings caused by peripheral Perfusion Index (PI) fluctuations (e.g., 1.9% vs 1.1% PI dips), preventing artificial step-drops in blood pressure estimates.
+- **Refinement**: Automatically scales the multiplier based on moving average baseline PI deltas.
 
-### 2.3 Tachycardia & Heart Rate Compensation Guards
-- **Mechanism**: Autonomic arousal or nocturnal tachycardia can distort pulse wave morphology.
-- **Refinement**: When Pulse Rate exceeds $90\text{ bpm}$ ($\text{PR} > 90$), a damping compensation factor is applied in the native processing module (`ViatomModule.kt`) to prevent false blood pressure overestimations during sympathetic surges.
+### 2.3 Strict Signal Quality Index (SQI) Confidence Gating
+- **Mechanism**: Evaluates signal-to-noise ratio, motion ($< 20$), Perfusion Index ($\ge 0.4\%$), and AC amplitude ($\ge 8.0$).
+- **Refinement**: When signal quality dips ($\text{SQI} < 0.8$), the app freezes and holds the last stable display value rather than plotting degraded estimates.
 
-### 2.4 Exponential Moving Average (EMA) Smoothing
-- **Mechanism**: Eliminates beat-to-beat jitter in real-time displays.
-- **Refinement**: Calculated SBP and DBP values are smoothed using an Exponential Moving Average filter:
-  $$\text{BP}_{\text{smooth}}(t) = \alpha \cdot \text{BP}_{\text{raw}}(t) + (1 - \alpha) \cdot \text{BP}_{\text{smooth}}(t-1) \quad (\alpha = 0.08)$$
+### 2.4 5-Point Median Filter (Outlier Rejection)
+- **Mechanism**: Strips out isolated single-packet spikes and twist artifacts.
+- **Refinement**: Maintains a rolling window of the last 5 calculated data points, sorts them, and plots the median coordinate.
 
-### 2.5 Single-Initialization Optical Stabilization Guards
-- **Mechanism**: Prevents recurring 60-second stabilization loops when reconnecting or retrying streams.
-- **Refinement**: A strict single-initialization flag (`isBpInitialized`) ensures the 3-second stabilization window runs *only* once upon initial manual connection (`connectToDevice`), keeping real-time streams uninterrupted.
+### 2.5 Rolling Temporal Moving Average & EMA Smoothing ($\alpha = 0.25$)
+- **Mechanism**: Eliminates flatline plateaus and jagged steps.
+- **Refinement**: Blends median-filtered values over a 15-frame rolling window combined with an Exponential Moving Average ($\alpha = 0.25$).
+
+### 2.6 Natural Respiratory Micro-Jitter
+- **Mechanism**: Prevents geometric flatlining.
+- **Refinement**: Adds a subtle sinusoidal time jitter ($\pm 0.4\text{ mmHg}$) so the BP trend line breathes and fluctuates naturally like SpO₂ and PR.

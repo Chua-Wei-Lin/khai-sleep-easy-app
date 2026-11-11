@@ -206,6 +206,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const lastDisconnectLogTime = React.useRef(0);
   const autoReconnectEnabled = React.useRef(true);
   const isDownloadingHistoryRef = React.useRef(false);
+  const isScanningRef = React.useRef(false);
   const totalFilesToDownload = React.useRef(0);
   const downloadedFiles = React.useRef(0);
   const nativeUploadRef = useRef(false);
@@ -956,12 +957,7 @@ const processReadQueue = useCallback(() => {
         }
       });
 
-      subDev = O2Ring.addDeviceFoundListener((dev) => {
-        setDevices((prev) => {
-          const exists = prev.some((item) => item.mac === dev.mac);
-          return exists ? prev : [...prev, dev];
-        });
-      });
+      // Device found listener is now dynamically bound to isScanning state below
 
       subDisc = O2Ring.addDisconnectedListener((evt) => {
         const isProgrammatic = isManualConnectingRef.current || intentionalDisconnectRef.current || evt?.reason === 10 || evt?.reason === 0;
@@ -1200,20 +1196,22 @@ const processReadQueue = useCallback(() => {
    * Start scanning for O2Ring devices
    */
   const startScan = useCallback(async () => {
-    isNativeModuleAvailable()
-
+    isNativeModuleAvailable();
+    if (isScanningRef.current) return true;
 
     const ok = hasPermission ? true : await requestPermissions();
     if (!ok) return false;
 
+    isScanningRef.current = true;
     setDevices([]);
     setIsScanning(true);
     try {
       await O2Ring.stopScan().catch(() => {});
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 300));
       await O2Ring.scan();
       return true;
     } catch (e) {
+      isScanningRef.current = false;
       console.warn("Error@O2RingProvider.tsx/startScan: ", e);
       setIsScanning(false);
       return false;
@@ -1221,6 +1219,7 @@ const processReadQueue = useCallback(() => {
   }, [hasPermission, requestPermissions]);
 
   const stopScan = useCallback(async () => {
+    isScanningRef.current = false;
     setIsScanning(false);
     try {
       await O2Ring.stopScan();
@@ -1362,6 +1361,8 @@ const processReadQueue = useCallback(() => {
 
       intentionalDisconnectRef.current = true;
       await O2Ring.disconnect();
+      // Brief 400ms delay to let OS Bluetooth stack release GATT connection handle
+      await new Promise((r) => setTimeout(r, 400));
     } catch (e) {
       console.warn("Error@O2RingProvider.tsx/disconnect: ", e);
       intentionalDisconnectRef.current = false;
@@ -1630,7 +1631,21 @@ const processReadQueue = useCallback(() => {
         return () => { sub.remove(); clearInterval(timer); };
       }, [flushPpgChunks]);
 
-      // Start recording once the ring is connected and the history sync has finished
+  // Re-bind addDeviceFoundListener whenever isScanning changes, preventing stale/dead event emitters
+  useEffect(() => {
+    let sub: any = null;
+    if (isScanning) {
+      sub = O2Ring.addDeviceFoundListener((dev: DeviceItem) => {
+        setDevices((prev) => {
+          const exists = prev.some((item) => item.mac === dev.mac);
+          return exists ? prev : [...prev, dev];
+        });
+      });
+    }
+    return () => {
+      sub?.remove();
+    };
+  }, [isScanning]);
       useEffect(() => {
         if (!connectedDevice || isDownloadingHistory) return;
         let cancelled = false;
