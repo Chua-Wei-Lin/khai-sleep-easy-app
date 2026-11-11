@@ -1,12 +1,12 @@
-# Dynamic Scan Event Listener Subscription Walkthrough
+# Uncommenting BP and RR Walkthrough
 
-Successfully updated [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx).
+Successfully updated [index.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/home/index.tsx), [ChartVisibility.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/ChartVisibility.tsx), and [index.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/index.tsx).
 
 ## Changes Made
 
-### O2Ring Service Provider (`O2RingProvider.tsx`)
-- **`isScanning`-Bound Event Listener**: Tied `addDeviceFoundListener` directly to the `isScanning` state rather than a one-time mount array. When `startScan()` sets `isScanning` to true, a fresh event subscription binds to the active native BLE broadcast stream, completely eliminating dead listener issues after screen blur or disconnects.
+### Dashboard & Settings (`index.tsx`, `ChartVisibility.tsx`, `index.tsx`)
+- **Uncommented BP & RR**: Restored Blood Pressure and Respiratory Rate charts on the live dashboard, re-enabled their toggle switches in Chart Visibility, and restored the Blood Pressure Calibration link in Settings.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- BLE scanning event listeners re-bind cleanly across scan sessions.
+- BP and RR are fully restored across dashboard and settings.

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View,
   Image,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -59,16 +60,18 @@ const getDisplayName = (name?: string, model?: number) => {
 type DeviceRowProps = {
   item: DeviceItem;
   onPress: (item: DeviceItem) => void;
+  onLongPress?: (item: DeviceItem) => void;
   disabled?: boolean;
   connecting?: boolean;
 };
 
-function DeviceRow({ item, onPress, disabled, connecting }: DeviceRowProps) {
+function DeviceRow({ item, onPress, onLongPress, disabled, connecting }: DeviceRowProps) {
   const { colors: C, fonts: F } = useTheme();
 
   return (
     <TouchableOpacity
       onPress={() => onPress(item)}
+      onLongPress={() => onLongPress?.(item)}
       style={[
         disabled ? styles.deviceRowDisabled : null,
         connecting ? styles.deviceRowConnecting : null,
@@ -123,6 +126,7 @@ export default function ScanDeviceScreen() {
     startScan,
     stopScan,
     connectToDevice,
+    forgetDevice,
   } = useO2Ring();
 
   // Ensure scanning starts whenever this screen is focused (and stops on blur)
@@ -149,6 +153,23 @@ export default function ScanDeviceScreen() {
       router.back();
     }
   }
+
+  const handleDeleteSaved = (item: DeviceItem) => {
+    Alert.alert(
+      t("confirmDeleteTitle"),
+      t("deleteKnownDeviceMessage"),
+      [
+        { text: t("cancel"), style: "cancel" },
+        {
+          text: t("delete"),
+          style: "destructive",
+          onPress: () => {
+            forgetDevice(item);
+          },
+        },
+      ]
+    );
+  };
 
   async function handleScanToggle() {
     if (isScanning) {
@@ -213,9 +234,9 @@ export default function ScanDeviceScreen() {
                   {isScanning ? "Scanning for nearby devices..." : "No live devices found in the air"}
                 </Text>
               ) : (
-                liveScanned.map((item) => (
+                liveScanned.map((item, idx) => (
                   <DeviceRow
-                    key={item.mac}
+                    key={`live-${item.mac || idx}`}
                     item={item}
                     onPress={handleConnect}
                     disabled={connecting}
@@ -231,11 +252,12 @@ export default function ScanDeviceScreen() {
                 <Text style={{ fontSize: 13, fontWeight: "700", color: C.sub, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
                   Saved Devices ({savedDevices.length})
                 </Text>
-                {savedDevices.map((item) => (
+                {savedDevices.map((item, idx) => (
                   <DeviceRow
-                    key={item.mac}
+                    key={`saved-${item.mac || idx}`}
                     item={item}
                     onPress={handleConnect}
+                    onLongPress={handleDeleteSaved}
                     disabled={connecting}
                     connecting={connecting}
                   />
