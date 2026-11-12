@@ -14,6 +14,16 @@ import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 import { useShareIntentContext } from "expo-share-intent";
 
+if (typeof ErrorUtils !== "undefined") {
+  const defaultHandler = ErrorUtils.getGlobalHandler();
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    if (error?.message?.includes("keep awake")) {
+      return;
+    }
+    defaultHandler(error, isFatal);
+  });
+}
+
 function DownloadHistoryModal() {
   const {
     isDownloadingHistory,

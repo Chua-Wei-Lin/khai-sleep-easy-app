@@ -67,6 +67,9 @@ type O2RingContextValue = {
   forgetDevice: (device: DeviceItem) => void;
   tempForgetDevice: (device: DeviceItem) => void;
   disconnect: () => Promise<void>;
+  disconnectCountdown: number | null;
+  cancelDisconnect: () => void;
+  executeActualDisconnect: () => Promise<void>;
   clearOfflineDevice: () => void;
   clearDevices: () => void;
   refreshRealtime: () => Promise<boolean>;
@@ -86,6 +89,9 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   );
   const [offlineDevice, setOfflineDevice] = useState<DeviceItem | null>(null);
   const [knownDevices, setKnownDevices] = useState<DeviceItem[]>([]);
+  const [lastConnectedMac, setLastConnectedMac] = useState<string | null>(null);
+  const [disconnectCountdown, setDisconnectCountdown] = useState<number | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [serviceReady, setServiceReady] = useState(
     Platform.OS === "android" ? true : false
   );
@@ -202,6 +208,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const autoReconnectScanTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectingRef = React.useRef(false);
   const autoConnectingRef = React.useRef(false);
+  const offFingerCountRef = React.useRef(0);
   const isManualConnectingRef = React.useRef(false);
   const lastDisconnectLogTime = React.useRef(0);
   const autoReconnectEnabled = React.useRef(true);
@@ -809,6 +816,16 @@ const processReadQueue = useCallback(() => {
         let validSpo2 = rt.spo2;
         if (validSpo2 != null && (validSpo2 < 50 || validSpo2 > 100)) validSpo2 = null;
 
+        if (validSpo2 == null || validSpo2 <= 0 || validPr == null || validPr <= 0) {
+          offFingerCountRef.current++;
+          if (offFingerCountRef.current >= 5 && connectedDeviceRef.current && disconnectCountdown == null && !connectingRef.current) {
+            console.log("[O2Ring] Ring removed from finger. Initiating auto-sync countdown...");
+            startAutoDisconnectCountdown();
+          }
+        } else {
+          offFingerCountRef.current = 0;
+        }
+
         setSpo2(validSpo2);
         setPr(validPr);
         setRr(rt.rr ?? null);
@@ -1349,55 +1366,90 @@ const processReadQueue = useCallback(() => {
   /**
    * Disconnect from the current device
    */
-  const disconnect = useCallback(async () => {
+  const executeActualDisconnect = useCallback(async () => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setDisconnectCountdown(null);
     try {
-      // Trigger a quick history check before disconnecting so any new recordings are pulled
       if (serviceReadyRef.current && connectedDeviceRef.current) {
         try {
           await O2Ring.getInfo();
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, 1000));
         } catch {}
       }
-
       intentionalDisconnectRef.current = true;
       await O2Ring.disconnect();
-      // Brief 400ms delay to let OS Bluetooth stack release GATT connection handle
       await new Promise((r) => setTimeout(r, 400));
     } catch (e) {
       console.warn("Error@O2RingProvider.tsx/disconnect: ", e);
+    } finally {
       intentionalDisconnectRef.current = false;
+      autoReconnectEnabled.current = false;
+      if (infoRetryTimer.current) {
+        clearInterval(infoRetryTimer.current);
+        infoRetryTimer.current = null;
+        infoRetryCount.current = 0;
+      }
+      if (readTimeout.current) {
+        clearTimeout(readTimeout.current);
+        readTimeout.current = null;
+      }
+      readQueue.current = [];
+      currentReading.current = null;
+      readAttempts.current.clear();
+      setConnectedDevice(null);
+      setSpo2(null);
+      setPr(null);
+      setRr(null);
+      setSbp(null);
+      setDbp(null);
+      resetSessionCalibration();
+      setRealtimeUpdatedAt(null);
+      setIsDownloadingHistory(false);
+      setDownloadProgress(0);
+      totalFilesToDownload.current = 0;
+      downloadedFiles.current = 0;
+      setDownloadCounts({ total: 0, completed: 0 });
+      setServiceReady(Platform.OS === "android");
+      setIosRealtimeReady(Platform.OS === "android");
+      setOfflineDevice(null);
     }
-    // Disable auto-reconnect after an explicit user disconnect.
-    autoReconnectEnabled.current = false;
-    if (infoRetryTimer.current) {
-      clearInterval(infoRetryTimer.current);
-      infoRetryTimer.current = null;
-      infoRetryCount.current = 0;
+  }, [resetSessionCalibration]);
+
+  const cancelDisconnect = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
-    if (readTimeout.current) {
-      clearTimeout(readTimeout.current);
-      readTimeout.current = null;
-    }
-    readQueue.current = [];
-    currentReading.current = null;
-    readAttempts.current.clear();
-    setConnectedDevice(null);
-    setSpo2(null);
-    setPr(null);
-    setRr(null);
-    setSbp(null);
-    setDbp(null);
-    resetSessionCalibration();
-    setRealtimeUpdatedAt(null);
-    setIsDownloadingHistory(false);
-    setDownloadProgress(0);
-    totalFilesToDownload.current = 0;
-    downloadedFiles.current = 0;
-    setDownloadCounts({ total: 0, completed: 0 });
-    setServiceReady(Platform.OS === "android");
-    setIosRealtimeReady(Platform.OS === "android");
-    setOfflineDevice(null);
+    setDisconnectCountdown(null);
   }, []);
+
+  const startAutoDisconnectCountdown = useCallback(() => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    setDisconnectCountdown(5);
+
+    if (serviceReadyRef.current && connectedDeviceRef.current) {
+      requestHistorySync().catch(() => {});
+    }
+
+    countdownTimerRef.current = setInterval(() => {
+      setDisconnectCountdown((prev) => {
+        if (prev == null || prev <= 1) {
+          if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+          executeActualDisconnect();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [requestHistorySync, executeActualDisconnect]);
+
+  const disconnect = useCallback(async () => {
+    await executeActualDisconnect();
+  }, [executeActualDisconnect]);
 
   /**
    * Manually restart realtime streaming if the UI needs a fresh feed
@@ -1728,6 +1780,9 @@ const processReadQueue = useCallback(() => {
       forgetDevice,
       tempForgetDevice,
       disconnect,
+      disconnectCountdown,
+      cancelDisconnect,
+      executeActualDisconnect,
       clearOfflineDevice,
       clearDevices,
       refreshRealtime,
@@ -1769,6 +1824,9 @@ const processReadQueue = useCallback(() => {
       forgetDevice,
       tempForgetDevice,
       disconnect,
+      disconnectCountdown,
+      cancelDisconnect,
+      executeActualDisconnect,
       clearOfflineDevice,
       clearDevices,
       refreshRealtime,

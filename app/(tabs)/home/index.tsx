@@ -16,6 +16,8 @@ import {
   Image,
   Alert,
   ScrollView,
+  Modal,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as NavigationBar from "expo-navigation-bar";
@@ -123,6 +125,9 @@ export default function Home() {
     battery,
     batteryState,
     disconnect,
+    disconnectCountdown,
+    cancelDisconnect,
+    executeActualDisconnect,
     refreshRealtime,
     isRealtimeReady,
     startScan,
@@ -518,30 +523,30 @@ export default function Home() {
                   onPress={() =>
                     setKnownDeviceMenuVisible(!knownDeviceMenuVisible)
                   }>
-                  <View style={{ backgroundColor: "#ffffff", borderRadius: 8, padding: 6 }}>
+                  <View style={{ backgroundColor: "#ffffff", borderRadius: 8, padding: 4 }}>
                     <Image
                       key={connectedDevice?.mac ?? "connected-device-image"}
                       source={getDeviceImage(connectedDevice?.name, connectedDevice?.model)}
                       resizeMode="contain"
                       style={{
-                        width: 48,
-                        height: 48,
+                        width: 40,
+                        height: 40,
                       }}
                     />
                   </View>
                   <View style={[styles.badge, { backgroundColor: C.tint }]}>
                     <MaterialCommunityIcons
                       name="swap-horizontal"
-                      size={16}
+                      size={14}
                       color={C.white}
                     />
                   </View>
                 </Pressable>
-                <View style={{ marginLeft: 10, flexShrink: 1, justifyContent: "center" }}>
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.text }} numberOfLines={1}>
+                <View style={{ marginLeft: 8, flex: 1, justifyContent: "center" }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: C.text }} numberOfLines={1}>
                     {getDisplayName(connectedDevice?.name, connectedDevice?.model)}
                   </Text>
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: C.tint, marginTop: 2 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: C.tint, marginTop: 2 }} numberOfLines={1}>
                     {t("connected")}
                   </Text>
                 </View>
@@ -862,6 +867,38 @@ export default function Home() {
             v{Constants.expoConfig?.version ?? "1.2.7"}
           </Text>
         </View>
+      )}
+
+      {disconnectCountdown != null && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={cancelDisconnect}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 }}>
+            <View style={{ backgroundColor: C.bg2, borderRadius: 16, padding: 24, width: "100%", maxWidth: 340, alignItems: "center", borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
+              <ActivityIndicator size="large" color={C.tint} style={{ marginBottom: 16 }} />
+              <Text style={{ fontSize: 18, fontWeight: "800", color: C.text, marginBottom: 8, textAlign: "center" }}>
+                Syncing & Uploading
+              </Text>
+              <Text style={{ fontSize: 14, color: C.sub, marginBottom: 20, textAlign: "center", lineHeight: 20 }}>
+                Uploading session records and finalizing sync... Disconnecting in <Text style={{ fontWeight: "800", color: C.tint }}>{disconnectCountdown}s</Text>
+              </Text>
+              <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
+                <Pressable
+                  onPress={cancelDisconnect}
+                  style={{ flex: 1, backgroundColor: C.card, paddingVertical: 12, borderRadius: 10, alignItems: "center", borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.text }}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={executeActualDisconnect}
+                  style={{ flex: 1, backgroundColor: C.danger, paddingVertical: 12, borderRadius: 10, alignItems: "center" }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.white }}>Disconnect Now</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       )}
     </SafeAreaView>
   );

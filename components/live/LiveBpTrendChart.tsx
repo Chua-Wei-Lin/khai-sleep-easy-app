@@ -122,24 +122,17 @@ export default function LiveBpTrendChart({
   return (
     <View style={[styles.card, { backgroundColor: C.bg2, borderColor: C.border }]}>
       <View style={styles.headRow}>
-        <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 1, gap: 4 }}>
           <Text style={[styles.title, { color: C.text }]} numberOfLines={1}>
             {title}
           </Text>
           {onPressCalibration && (
             <TouchableOpacity
               onPress={onPressCalibration}
-              style={{
-                marginLeft: 6,
-                padding: 4,
-                backgroundColor: "transparent",
-                borderRadius: 6,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              style={{ padding: 2, backgroundColor: "transparent" }}
               activeOpacity={0.7}
               accessibilityLabel="Fine tune calibration">
-              <Ionicons name="settings-outline" size={16} color={C.text} />
+              <Ionicons name="settings-outline" size={15} color={C.text} />
             </TouchableOpacity>
           )}
         </View>

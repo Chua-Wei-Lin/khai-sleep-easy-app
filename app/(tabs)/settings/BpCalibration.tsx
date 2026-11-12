@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as O2Ring from "@ios-app/viatom-o2ring";
 import { useO2Ring } from "../../../service/O2RingProvider";
+import { Ionicons } from "@expo/vector-icons";
 
 export const BP_CALIBRATION_KEY = "settings:bp_calibration";
 
@@ -73,7 +74,14 @@ export default function BpCalibrationScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: C.bg }]} edges={["bottom", "left", "right"]}>
-      <View style={{ padding: 12, paddingTop: 4 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, marginBottom: 12 }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12, padding: 4 }} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={24} color={C.text} />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 18, fontWeight: "800", color: C.text }}>Blood Pressure Calibration</Text>
+      </View>
+
+      <View style={{ padding: 16, paddingTop: 4 }}>
         <Text style={[styles.subtitle, { color: C.text, opacity: 0.85 }]}>
           Enter baseline blood pressure values measured from a standard arm cuff for personal calibration.
         </Text>
@@ -117,10 +125,10 @@ export default function BpCalibrationScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  subtitle: { fontSize: 11, marginBottom: 12, lineHeight: 15 },
-  card: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 12, marginBottom: 12 },
-  inputGroup: { marginBottom: 10 },
-  label: { fontSize: 11, fontWeight: "700", marginBottom: 4 },
-  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 8, fontSize: 13, fontWeight: "600" },
-  button: { marginTop: 4, height: 40, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  subtitle: { fontSize: 12, marginBottom: 16, lineHeight: 18 },
+  card: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 16, marginBottom: 16 },
+  inputGroup: { marginBottom: 14 },
+  label: { fontSize: 12, fontWeight: "700", marginBottom: 6 },
+  input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10, fontSize: 14, fontWeight: "600" },
+  button: { marginTop: 8, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center" },
 });

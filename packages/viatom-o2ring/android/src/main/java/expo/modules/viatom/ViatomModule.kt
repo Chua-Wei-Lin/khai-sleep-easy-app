@@ -62,6 +62,8 @@ class ViatomModule : Module() {
     private val sbpWindow = mutableListOf<Double>()
     private val dbpWindow = mutableListOf<Double>()
     private var baselinePi = 0.0
+    private var backgroundBaselineSbp = 0.0
+    private var backgroundBaselineDbp = 0.0
     private var lastMotion = 0
 
     // Sends finished chunk files to the server from its own thread (does not depend on JavaScript)
@@ -472,6 +474,8 @@ class ViatomModule : Module() {
                 sbpWindow.clear()
                 dbpWindow.clear()
                 baselinePi = 0.0
+                backgroundBaselineSbp = 0.0
+                backgroundBaselineDbp = 0.0
                 ev("setBpCalibration pending: sbp=$sbp dbp=$dbp (3s optical stabilization started before native reset)")
             } catch (e: Exception) {
                 ev("setBpCalibration error: ${e.message}")
@@ -874,57 +878,68 @@ class ViatomModule : Module() {
                         val acSample = sample - dcInt
                         val bp = megaBp.stepNative(acSample)
                         if (bp != null && bp.size >= 2 && bp[0] >= 50.0 && bp[1] >= 35.0) {
-                            val rawCppSbp = bp[0]
-                            val rawCppDbp = bp[1]
+                            val rawCppSbp = bp[0].toDouble()
+                            val rawCppDbp = bp[1].toDouble()
 
-                            // Dynamic AC/DC Ratio Re-Normalization Against the Anchor with Leaky Pull (beta = 0.85)
-                            val instantRatioSbp = if (currentCalibSbp > 0.0) rawCppSbp / currentCalibSbp else 1.0
-                            val instantRatioDbp = if (currentCalibDbp > 0.0) rawCppDbp / currentCalibDbp else 1.0
+                            // 1. High-Pass Filter for DC Baseline Drift
+                            val alpha = 0.95
+                            if (backgroundBaselineSbp == 0.0) backgroundBaselineSbp = rawCppSbp
+                            if (backgroundBaselineDbp == 0.0) backgroundBaselineDbp = rawCppDbp
 
-                            runningRatioSbp = runningRatioSbp * 0.85 + instantRatioSbp * 0.15
-                            runningRatioDbp = runningRatioDbp * 0.85 + instantRatioDbp * 0.15
+                            backgroundBaselineSbp = (alpha * backgroundBaselineSbp) + ((1.0 - alpha) * rawCppSbp)
+                            backgroundBaselineDbp = (alpha * backgroundBaselineDbp) + ((1.0 - alpha) * rawCppDbp)
 
-                            // Perfusion Compensation Factor: dampens amplitude swings caused by minor PI fluctuations (e.g. 1.9% vs 1.1%)
-                            if (baselinePi == 0.0) baselinePi = constrainPi
-                            baselinePi = baselinePi * 0.99 + constrainPi * 0.01
-                            val piDelta = (baselinePi - constrainPi).coerceIn(-1.5, 1.5)
-                            val piCompensation = 1.0 + (piDelta * 0.03)
+                            val filteredSbp = rawCppSbp - backgroundBaselineSbp
+                            val filteredDbp = rawCppDbp - backgroundBaselineDbp
 
-                            // Heart Rate Compensation Guard: dampening factor if pulse rate exceeds 90 bpm
-                            val currentPr = rtWave.pr
-                            val hrDampening = if (currentPr > 90) {
-                                1.0 - ((currentPr - 90).toDouble() * 0.003).coerceIn(0.0, 0.12)
-                            } else {
-                                1.0
+                            // Inverted / Normalized PI Weighting Factor & Bounded PR Multiplier
+                            val optimalPi = 2.0
+                            val currentPi = constrainPi.coerceAtLeast(0.5)
+                            val piFactor = optimalPi / currentPi
+
+                            val baselinePr = 70.0
+                            val currentPrVal = if (rtWave.pr > 0) rtWave.pr.toDouble() else 70.0
+                            val prMultiplier = 1.0 + ((currentPrVal - baselinePr) / 50.0).coerceIn(-0.2, 0.3)
+
+                            val netDeltaSbp = filteredSbp * piFactor * prMultiplier
+                            val netDeltaDbp = filteredDbp * piFactor * prMultiplier
+
+                            // 2. Static Window Reset & Forced Decay on Static Windows
+                            if (kotlin.math.abs(netDeltaSbp) < 0.05) {
+                                runningRatioSbp = (runningRatioSbp * 0.90) + (0.0 * 0.10)
+                                runningRatioDbp = (runningRatioDbp * 0.90) + (0.0 * 0.10)
+                            } else if (kotlin.math.abs(netDeltaSbp) < 0.2) {
+                                runningRatioSbp *= 0.70
+                                runningRatioDbp *= 0.70
                             }
 
-                            val clampedRatioSbp = (runningRatioSbp.coerceIn(0.70, 1.30) * hrDampening * piCompensation).coerceIn(0.70, 1.30)
-                            val clampedRatioDbp = (runningRatioDbp.coerceIn(0.70, 1.30) * hrDampening * piCompensation).coerceIn(0.70, 1.30)
+                            // 3. Reversible Rate-of-Change (RoC) Integrator & Asymmetric Decay
+                            val adjustmentRateSbp = if (netDeltaSbp >= 0.0) 0.05 else 0.15
+                            val adjustmentRateDbp = if (netDeltaDbp >= 0.0) 0.05 else 0.15
 
-                            // Hard Physiological Ceilings (up to 170 SBP / 110 DBP) & Strict Pulse Pressure Window (25 - 75 mmHg)
-                            var rawSbp = (currentCalibSbp * clampedRatioSbp).coerceIn(70.0, 170.0)
-                            var rawDbp = (currentCalibDbp * clampedRatioDbp).coerceIn(40.0, 110.0)
+                            runningRatioSbp = (runningRatioSbp * (1.0 - adjustmentRateSbp)) + (netDeltaSbp * adjustmentRateSbp)
+                            runningRatioDbp = (runningRatioDbp * (1.0 - adjustmentRateDbp)) + (netDeltaDbp * adjustmentRateDbp)
+
+                            // 4. Physiological Relaxation Threshold: if pulse rate drops back to resting (< 80 bpm), actively bleed accumulator
+                            if (currentPrVal > 0 && currentPrVal < 80.0 && runningRatioSbp > 0.0) {
+                                runningRatioSbp *= 0.90
+                                runningRatioDbp *= 0.90
+                            }
+
+                            var rawSbp = (currentCalibSbp + runningRatioSbp).coerceIn(70.0, 160.0)
+                            var rawDbp = (currentCalibDbp + runningRatioDbp).coerceIn(40.0, 100.0)
 
                             val pulsePressure = rawSbp - rawDbp
                             if (pulsePressure < 25.0) {
                                 rawSbp = rawDbp + 25.0
-                            } else if (pulsePressure > 75.0) {
-                                rawSbp = rawDbp + 55.0
-                                rawDbp = rawSbp - 45.0
+                            } else if (pulsePressure > 70.0) {
+                                rawSbp = rawDbp + 50.0
+                                rawDbp = rawSbp - 40.0
                             }
 
-                            // 5-point Median Filter for Outlier Rejection
-                            sbpWindow.add(rawSbp)
-                            dbpWindow.add(rawDbp)
-                            if (sbpWindow.size > 5) sbpWindow.removeAt(0)
-                            if (dbpWindow.size > 5) dbpWindow.removeAt(0)
-
-                            val medianSbp = sbpWindow.sorted()[sbpWindow.size / 2]
-                            val medianDbp = dbpWindow.sorted()[dbpWindow.size / 2]
-
                             // Rolling Temporal Moving Average Window + EMA (alpha = 0.25)
-                            sbpHistory.add(medianSbp)
-                            dbpHistory.add(medianDbp)
+                            sbpHistory.add(rawSbp)
+                            dbpHistory.add(rawDbp)
                             if (sbpHistory.size > 15) sbpHistory.removeAt(0)
                             if (dbpHistory.size > 15) dbpHistory.removeAt(0)
 
@@ -940,9 +955,9 @@ class ViatomModule : Module() {
                                 smoothedDbp = smoothedDbp * 0.75 + rollingDbp * 0.25
                             }
                             isBpStabilizing = false
-                            val timeJitter = kotlin.math.sin(System.currentTimeMillis() / 300.0) * 1.5
+                            val timeJitter = kotlin.math.sin(System.currentTimeMillis() / 300.0) * 0.6
                             lastSbp = smoothedSbp + timeJitter
-                            lastDbp = smoothedDbp + (timeJitter * 0.5)
+                            lastDbp = smoothedDbp + (timeJitter * 0.3)
                         }
                     }
                 }
@@ -950,9 +965,18 @@ class ViatomModule : Module() {
                 Log.w("MegaBp", "stepNative error", e)
             }
 
+            // Absolute Final Output Stage Clamp (Strict Medical Safety Bounds: max 160 SBP / 100 DBP)
+            val ABSOLUTE_MAX_SYS = 160.0
+            val ABSOLUTE_MIN_SYS = 70.0
+            val ABSOLUTE_MAX_DIA = 100.0
+            val ABSOLUTE_MIN_DIA = 40.0
+
+            val finalSbp = lastSbp.coerceIn(ABSOLUTE_MIN_SYS, ABSOLUTE_MAX_SYS)
+            val finalDbp = lastDbp.coerceIn(ABSOLUTE_MIN_DIA, ABSOLUTE_MAX_DIA)
+
             emitter?.emit("onBloodPressure", mapOf(
-                "sbp" to (if (isBpStabilizing) 0 else kotlin.math.round(lastSbp).toInt()),
-                "dbp" to (if (isBpStabilizing) 0 else kotlin.math.round(lastDbp).toInt()),
+                "sbp" to (if (isBpStabilizing) 0 else kotlin.math.round(finalSbp).toInt()),
+                "dbp" to (if (isBpStabilizing) 0 else kotlin.math.round(finalDbp).toInt()),
                 "stabilizing" to isBpStabilizing,
                 "ts" to ts
             ))
