@@ -64,6 +64,9 @@ class ViatomModule : Module() {
     private var baselinePi = 0.0
     private var backgroundBaselineSbp = 0.0
     private var backgroundBaselineDbp = 0.0
+    private var calibOffsetSbp = 0.0
+    private var calibOffsetDbp = 0.0
+    private var hasCalibOffset = false
     private var lastMotion = 0
 
     // Sends finished chunk files to the server from its own thread (does not depend on JavaScript)
@@ -476,6 +479,9 @@ class ViatomModule : Module() {
                 baselinePi = 0.0
                 backgroundBaselineSbp = 0.0
                 backgroundBaselineDbp = 0.0
+                calibOffsetSbp = 0.0
+                calibOffsetDbp = 0.0
+                hasCalibOffset = false
                 ev("setBpCalibration pending: sbp=$sbp dbp=$dbp (3s optical stabilization started before native reset)")
             } catch (e: Exception) {
                 ev("setBpCalibration error: ${e.message}")
@@ -881,53 +887,15 @@ class ViatomModule : Module() {
                             val rawCppSbp = bp[0].toDouble()
                             val rawCppDbp = bp[1].toDouble()
 
-                            // 1. High-Pass Filter for DC Baseline Drift
-                            val alpha = 0.95
-                            if (backgroundBaselineSbp == 0.0) backgroundBaselineSbp = rawCppSbp
-                            if (backgroundBaselineDbp == 0.0) backgroundBaselineDbp = rawCppDbp
-
-                            backgroundBaselineSbp = (alpha * backgroundBaselineSbp) + ((1.0 - alpha) * rawCppSbp)
-                            backgroundBaselineDbp = (alpha * backgroundBaselineDbp) + ((1.0 - alpha) * rawCppDbp)
-
-                            val filteredSbp = rawCppSbp - backgroundBaselineSbp
-                            val filteredDbp = rawCppDbp - backgroundBaselineDbp
-
-                            // Inverted / Normalized PI Weighting Factor & Bounded PR Multiplier
-                            val optimalPi = 2.0
-                            val currentPi = constrainPi.coerceAtLeast(0.5)
-                            val piFactor = optimalPi / currentPi
-
-                            val baselinePr = 70.0
-                            val currentPrVal = if (rtWave.pr > 0) rtWave.pr.toDouble() else 70.0
-                            val prMultiplier = 1.0 + ((currentPrVal - baselinePr) / 50.0).coerceIn(-0.2, 0.3)
-
-                            val netDeltaSbp = filteredSbp * piFactor * prMultiplier
-                            val netDeltaDbp = filteredDbp * piFactor * prMultiplier
-
-                            // 2. Static Window Reset & Forced Decay on Static Windows
-                            if (kotlin.math.abs(netDeltaSbp) < 0.05) {
-                                runningRatioSbp = (runningRatioSbp * 0.90) + (0.0 * 0.10)
-                                runningRatioDbp = (runningRatioDbp * 0.90) + (0.0 * 0.10)
-                            } else if (kotlin.math.abs(netDeltaSbp) < 0.2) {
-                                runningRatioSbp *= 0.70
-                                runningRatioDbp *= 0.70
+                            if (!hasCalibOffset) {
+                                calibOffsetSbp = pendingCalibrationSbp - rawCppSbp
+                                calibOffsetDbp = pendingCalibrationDbp - rawCppDbp
+                                hasCalibOffset = true
                             }
 
-                            // 3. Reversible Rate-of-Change (RoC) Integrator & Asymmetric Decay
-                            val adjustmentRateSbp = if (netDeltaSbp >= 0.0) 0.05 else 0.15
-                            val adjustmentRateDbp = if (netDeltaDbp >= 0.0) 0.05 else 0.15
-
-                            runningRatioSbp = (runningRatioSbp * (1.0 - adjustmentRateSbp)) + (netDeltaSbp * adjustmentRateSbp)
-                            runningRatioDbp = (runningRatioDbp * (1.0 - adjustmentRateDbp)) + (netDeltaDbp * adjustmentRateDbp)
-
-                            // 4. Physiological Relaxation Threshold: if pulse rate drops back to resting (< 80 bpm), actively bleed accumulator
-                            if (currentPrVal > 0 && currentPrVal < 80.0 && runningRatioSbp > 0.0) {
-                                runningRatioSbp *= 0.90
-                                runningRatioDbp *= 0.90
-                            }
-
-                            var rawSbp = (currentCalibSbp + runningRatioSbp).coerceIn(70.0, 160.0)
-                            var rawDbp = (currentCalibDbp + runningRatioDbp).coerceIn(40.0, 100.0)
+                            // Static calibration offset mapping (Zero Accumulator Drift / Runaway Climb)
+                            var rawSbp = (rawCppSbp + calibOffsetSbp).coerceIn(70.0, 160.0)
+                            var rawDbp = (rawCppDbp + calibOffsetDbp).coerceIn(40.0, 100.0)
 
                             val pulsePressure = rawSbp - rawDbp
                             if (pulsePressure < 25.0) {

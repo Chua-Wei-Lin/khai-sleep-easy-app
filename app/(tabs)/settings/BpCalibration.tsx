@@ -118,6 +118,24 @@ export default function BpCalibrationScreen() {
           activeOpacity={0.85}>
           <Text style={[F.buttonText, { color: C.white, fontSize: 13 }]}>Save Calibration</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={async () => {
+            await AsyncStorage.removeItem(BP_CALIBRATION_KEY);
+            setSbp("120.0");
+            setDbp("80.0");
+            try {
+              // @ts-ignore
+              if (O2Ring.setBpCalibration) {
+                await O2Ring.setBpCalibration(120, 80);
+              }
+            } catch {}
+            Alert.alert("Reset Successful", "Calibration has been reset to default (120/80 mmHg).");
+          }}
+          style={[styles.button, { backgroundColor: C.card, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border, marginTop: 10 }]}
+          activeOpacity={0.85}>
+          <Text style={[F.buttonText, { color: C.text, fontSize: 13 }]}>Reset to Default (120/80)</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
