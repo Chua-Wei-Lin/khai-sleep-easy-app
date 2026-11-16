@@ -18,6 +18,9 @@ import { router } from "expo-router";
 import { loginWithEmailAndPassword } from "../service/Welcome";
 import Constants from "expo-constants";
 
+const bannerLight = require("../assets/sleepeasylogo-banner.png");
+const bannerDark = require("../assets/sleepeasylogo-banner-darkMode.png");
+
 export default function Welcome() {
   const { colors: C, fonts: F, isDark } = useTheme();
 
@@ -25,9 +28,7 @@ export default function Welcome() {
   const [password, setPassword] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const bannerSource = isDark
-    ? require("../assets/sleepeasylogo-banner-darkMode.png")
-    : require("../assets/sleepeasylogo-banner.png");
+  const bannerSource = isDark ? bannerDark : bannerLight;
 
   const canSubmit =
     email.trim().length > 0 && password.length > 0 && !isSubmitting;

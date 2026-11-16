@@ -113,7 +113,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
     if (stabilizationTimerRef.current) clearTimeout(stabilizationTimerRef.current);
     stabilizationTimerRef.current = setTimeout(() => {
       setIsBpStabilizing(false);
-    }, 3000);
+    }, 3500);
   }, []);
 
   const [pi, setPi] = useState<number | null>(null);
@@ -209,6 +209,8 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const connectingRef = React.useRef(false);
   const autoConnectingRef = React.useRef(false);
   const offFingerCountRef = React.useRef(0);
+  const isAutoDisconnectActiveRef = React.useRef(false);
+  const offFingerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isManualConnectingRef = React.useRef(false);
   const lastDisconnectLogTime = React.useRef(0);
   const autoReconnectEnabled = React.useRef(true);
@@ -313,6 +315,15 @@ const processReadQueue = useCallback(() => {
       setDownloadCounts({ total: 0, completed: 0 });
       readAttempts.current.clear();
 
+      // If auto-disconnect countdown was waiting for history sync/upload, finish now!
+      if (countdownTimerRef.current != null) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+        setDisconnectCountdown(null);
+        executeActualDisconnect();
+        return;
+      }
+
       // Force resume real-time telemetry & live wave after history sync completes (wait 3s for ring to fully exit file mode)
       setTimeout(async () => {
         try {
@@ -395,6 +406,7 @@ const processReadQueue = useCallback(() => {
    */
   const enqueueHistoryFiles = useCallback(
     (files: string[]) => {
+      if (!files || files.length === 0) return;
       const newOnes = files.filter(
         (f) => !readQueue.current.includes(f) && currentReading.current !== f
       );
@@ -818,12 +830,24 @@ const processReadQueue = useCallback(() => {
 
         if (validSpo2 == null || validSpo2 <= 0 || validPr == null || validPr <= 0) {
           offFingerCountRef.current++;
-          if (offFingerCountRef.current >= 5 && connectedDeviceRef.current && disconnectCountdown == null && !connectingRef.current) {
-            console.log("[O2Ring] Ring removed from finger. Initiating auto-sync countdown...");
-            startAutoDisconnectCountdown();
+          if (offFingerCountRef.current >= 2 && connectedDeviceRef.current && !isAutoDisconnectActiveRef.current && !connectingRef.current) {
+            if (!offFingerTimerRef.current) {
+              console.log("[O2Ring] Finger removal detected. Waiting 3s before starting sync countdown...");
+              offFingerTimerRef.current = setTimeout(() => {
+                offFingerTimerRef.current = null;
+                if (connectedDeviceRef.current && !isAutoDisconnectActiveRef.current) {
+                  isAutoDisconnectActiveRef.current = true;
+                  startAutoDisconnectCountdown();
+                }
+              }, 3000);
+            }
           }
         } else {
           offFingerCountRef.current = 0;
+          if (offFingerTimerRef.current) {
+            clearTimeout(offFingerTimerRef.current);
+            offFingerTimerRef.current = null;
+          }
         }
 
         setSpo2(validSpo2);
@@ -863,11 +887,17 @@ const processReadQueue = useCallback(() => {
       subWave = O2Ring.addBloodPressureListener((bp) => {
         if (bp?.stabilizing === true) {
           setIsBpStabilizing(true);
+          if (stabilizationTimerRef.current) clearTimeout(stabilizationTimerRef.current);
+          stabilizationTimerRef.current = setTimeout(() => {
+            setIsBpStabilizing(false);
+          }, 3500);
           bpBuffer.current = [];
           setSbp(null);
           setDbp(null);
           return;
         }
+
+        setIsBpStabilizing(false);
 
         if (spo2Ref.current == null || spo2Ref.current < 20 || prRef.current == null || prRef.current < 20) {
           bpBuffer.current = [];
@@ -1367,6 +1397,12 @@ const processReadQueue = useCallback(() => {
    * Disconnect from the current device
    */
   const executeActualDisconnect = useCallback(async () => {
+    // If a history file is currently downloading or queued, defer disconnect until download finishes!
+    if (isDownloadingHistoryRef.current || readQueue.current.length > 0 || currentReading.current != null) {
+      console.log("[O2Ring] History download in progress; deferring disconnect until sync completes.");
+      return;
+    }
+
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
@@ -1385,6 +1421,11 @@ const processReadQueue = useCallback(() => {
     } catch (e) {
       console.warn("Error@O2RingProvider.tsx/disconnect: ", e);
     } finally {
+      isAutoDisconnectActiveRef.current = false;
+      if (offFingerTimerRef.current) {
+        clearTimeout(offFingerTimerRef.current);
+        offFingerTimerRef.current = null;
+      }
       intentionalDisconnectRef.current = false;
       autoReconnectEnabled.current = false;
       if (infoRetryTimer.current) {
@@ -1419,6 +1460,11 @@ const processReadQueue = useCallback(() => {
   }, [resetSessionCalibration]);
 
   const cancelDisconnect = useCallback(() => {
+    isAutoDisconnectActiveRef.current = false;
+    if (offFingerTimerRef.current) {
+      clearTimeout(offFingerTimerRef.current);
+      offFingerTimerRef.current = null;
+    }
     if (countdownTimerRef.current) {
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
@@ -1427,10 +1473,13 @@ const processReadQueue = useCallback(() => {
   }, []);
 
   const startAutoDisconnectCountdown = useCallback(() => {
-    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    if (disconnectCountdown != null || countdownTimerRef.current != null) return;
+    isAutoDisconnectActiveRef.current = true;
     setDisconnectCountdown(5);
 
     if (serviceReadyRef.current && connectedDeviceRef.current) {
+      // Send immediate getInfo ping to reset ring auto-off timer and start history sync
+      O2Ring.getInfo().catch(() => {});
       requestHistorySync().catch(() => {});
     }
 

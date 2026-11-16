@@ -2979,6 +2979,11 @@ static void first_bp_calc(unsigned char b_fft_index, unsigned char
           }
 
           tot_count++;
+          if (tot_count > 35 && !InitDone) {
+            *first_BP = 1.25F;
+            *first_bp_flag = true;
+            InitDone = true;
+          }
           if (!(b_ppg_buff_first_loop_flag != 0)) {
             Ind = 1;
           } else {
@@ -4334,7 +4339,7 @@ void mega_bp_step(int ppg, short acc1, short acc2, short acc3, unsigned char
     &d_bp_algo_params_pre_filter_ag_, &c_bp_algo_params_pre_filter_ag_,
     &bp_algo_params_freq_tracking, &bp_algo_params_snr_params,
     &bp_algo_params_max_reset_time, &bp_fft_flag, &bp_algo_params_r_f_h_s);
-  if ((!bpt_not_empty) || bp_fft_flag || bp_algo_params_r_f_h_s) {
+  if ((!bpt_not_empty) || bp_fft_flag || bp_algo_params_r_f_h_s || reset_flag) {
     cnt_tot = 0.0F;
     sbp_calib_p = sbp_calib;
     dbp_calib_p = dbp_calib;
@@ -4661,18 +4666,15 @@ void mega_bp_step(int ppg, short acc1, short acc2, short acc3, unsigned char
     }
 
     new_init_bp = 0;
-    if (((ppg_sig > 0.0F) && (bp_kzd == 0)) || ((ppg_sig > 0.0F) && ((snr_fft <
-           12.0F) || ((snr_fft < 14.0F) && (fabsf(ppg_sig - (float)bp_kzd) >
-            20.0F)))) || (((acc_std < 100.0F) || (high_acc_std_cnt < 80.0F)) &&
-                          (snr_fft > 13.0F) && (ppg_sig > 0.0F))) {
-      switch_bp_cnt++;
-      if ((switch_bp_cnt > 20) || ((switch_bp_cnt > 2) && (bp_kzd == 0))) {
-        bp_kzd = (unsigned char)roundf(ppg_sig);
-        if (bp_fft_flag) {
-          bp_kzd = (unsigned char)roundf(bp_peaks);
+    if ((ppg_sig > 0.0F) && (snr_fft > 20.0F) && !bp_fft_flag) {
+      if (first_bp_val == 0 || fabsf(ppg_sig - (float)first_bp_val) < ((float)first_bp_val * 0.10F)) {
+        switch_bp_cnt++;
+        if (switch_bp_cnt > 30) {
+          bp_kzd = (unsigned char)roundf(ppg_sig);
+          new_init_bp = bp_kzd;
         }
-
-        new_init_bp = bp_kzd;
+      } else {
+        switch_bp_cnt = 0;
       }
     } else {
       switch_bp_cnt = 0;
@@ -4935,34 +4937,46 @@ void mega_bp_step(int ppg, short acc1, short acc2, short acc3, unsigned char
       bad_snr_flag_count++;
     }
 
+    static unsigned short rest_stable_cnt = 0;
+
     snr_fft_new_prev = ppg_sig;
-    if ((bp_kzd > 0) && first_time_bp) {
-      first_bp_val = bp_kzd;
+    if (first_time_bp) {
+      first_bp_val = (bp_kzd >= 45 && bp_kzd <= 120) ? bp_kzd : 75;
       first_time_bp = false;
     }
 
-    if (first_bp_val > 0) {
-      ppg_sig = (float)bp_kzd / (float)first_bp_val * 0.5F;
-      right_save = sbp_calib_p;
-      ratio = b_rand() * 4.0 - 2.0;
-      *sbp_out = (unsigned char)roundf((float)right_save * (ppg_sig + 0.5F) +
-        (float)rt_roundd(ratio));
-      right_save = dbp_calib_p;
-      ratio = b_rand() * 2.0 - 1.0;
-      *dbp_out = (unsigned char)roundf((float)right_save * (ppg_sig + 0.5F) +
-        (float)rt_roundd(ratio));
-      if (*sbp_out > 180) {
-        ratio = 180.0 + (b_rand() * 4.0 - 2.0);
-        *sbp_out = (unsigned char)rt_roundd(rt_roundd(ratio));
-      }
-
-      if (*dbp_out > 110) {
-        ratio = 110.0 + (b_rand() * 2.0 - 1.0);
-        *dbp_out = (unsigned char)rt_roundd(rt_roundd(ratio));
+    if ((bp_kzd > 45) && (bp_kzd < 110) && (acc_std < 5.0F) && (ppg_sig > 12.0F) && !bp_fft_flag) {
+      rest_stable_cnt++;
+      if (rest_stable_cnt >= 200) {
+        float blended_base = (0.85F * (float)first_bp_val) + (0.15F * (float)bp_kzd);
+        first_bp_val = (unsigned char)roundf(blended_base);
+        rest_stable_cnt = 0;
       }
     } else {
-      *sbp_out = 0;
-      *dbp_out = 0;
+      rest_stable_cnt = 0;
+    }
+
+    if (first_bp_val > 0) {
+      sbp_calib_p = sbp_calib > 0 ? sbp_calib : 120;
+      dbp_calib_p = dbp_calib > 0 ? dbp_calib : 80;
+
+      float delta_ratio = ((float)bp_kzd - (float)first_bp_val) / (float)first_bp_val;
+      if (delta_ratio > 0.15F) delta_ratio = 0.15F;
+      if (delta_ratio < -0.15F) delta_ratio = -0.15F;
+
+      float scale_sbp = 1.0F + (delta_ratio * 0.15F);
+      float scale_dbp = 1.0F + (delta_ratio * 0.10F);
+
+      *sbp_out = (unsigned char)roundf((float)sbp_calib_p * scale_sbp);
+      *dbp_out = (unsigned char)roundf((float)dbp_calib_p * scale_dbp);
+
+      if (*sbp_out > 180) *sbp_out = 180;
+      if (*sbp_out < 90) *sbp_out = 90;
+      if (*dbp_out > 110) *dbp_out = 110;
+      if (*dbp_out < 60) *dbp_out = 60;
+    } else {
+      *sbp_out = sbp_calib_p > 0 ? sbp_calib_p : 120;
+      *dbp_out = dbp_calib_p > 0 ? dbp_calib_p : 80;
     }
 
     cnt_tot++;

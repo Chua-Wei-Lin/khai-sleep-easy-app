@@ -5,12 +5,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useTheme } from "../theme/ThemeProvider";
 
+const bannerLight = require("../assets/sleepeasylogo-banner.png");
+const bannerDark = require("../assets/sleepeasylogo-banner-darkMode.png");
+
 export default function WelcomeBack() {
   const { colors: C, fonts: F, isDark } = useTheme();
   const [patientID, setPatientID] = useState<string | null>(null);
-  const bannerSource = isDark
-    ? require("../assets/sleepeasylogo-banner-darkMode.png")
-    : require("../assets/sleepeasylogo-banner.png");
+  const bannerSource = isDark ? bannerDark : bannerLight;
 
   useEffect(() => {
     let redirectTimer: ReturnType<typeof setTimeout> | undefined;

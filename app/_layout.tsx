@@ -7,12 +7,18 @@ import {
   usePathname,
   useRootNavigationState,
 } from "expo-router";
-import { Modal, View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { Modal, View, Text, TextInput, ActivityIndicator, Pressable, StyleSheet } from "react-native";
 import "../locales/i18n";
 import { useO2Ring, O2RingProvider } from "../service/O2RingProvider";
 import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 import { useShareIntentContext } from "expo-share-intent";
+
+if ((Text as any).defaultProps == null) (Text as any).defaultProps = {};
+(Text as any).defaultProps.allowFontScaling = false;
+
+if ((TextInput as any).defaultProps == null) (TextInput as any).defaultProps = {};
+(TextInput as any).defaultProps.allowFontScaling = false;
 
 if (typeof ErrorUtils !== "undefined") {
   const defaultHandler = ErrorUtils.getGlobalHandler();
@@ -103,6 +109,40 @@ function DownloadHistoryModal() {
   );
 }
 
+function DisconnectCountdownModal() {
+  const { disconnectCountdown, cancelDisconnect } = useO2Ring();
+  const { colors: C } = useTheme();
+
+  if (disconnectCountdown == null) return null;
+
+  return (
+    <Modal
+      visible={true}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={cancelDisconnect}>
+      <View style={styles.modalBackdrop}>
+        <View style={[styles.modalCard, { backgroundColor: C.bg2, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }]}>
+          <ActivityIndicator size="large" color={C.tint} style={{ marginBottom: 16 }} />
+          <Text style={[styles.modalTitle, { color: C.text, textAlign: "center" }]}>
+            Syncing & Uploading
+          </Text>
+          <Text style={{ color: C.sub, textAlign: "center", marginBottom: 20, lineHeight: 20 }}>
+            Uploading session records and finalizing sync... Disconnecting in <Text style={{ fontWeight: "800", color: C.tint }}>{disconnectCountdown}s</Text>
+          </Text>
+          <Pressable
+            onPress={cancelDisconnect}
+            style={{ backgroundColor: C.card, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, alignItems: "center", borderWidth: StyleSheet.hairlineWidth, borderColor: C.border, width: "100%" }}
+            activeOpacity={0.85}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: C.text }}>Cancel</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function InnerLayout() {
   const navState = useRootNavigationState();
   const pathname = usePathname();
@@ -122,6 +162,7 @@ function InnerLayout() {
       <ThemeProvider>
         <O2RingProvider>
           <DownloadHistoryModal />
+          <DisconnectCountdownModal />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen
               name="(tabs)"
@@ -150,7 +191,18 @@ function InnerLayout() {
                 animation: "fade",
               }}
             />
-            <Stack.Screen name="Share" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="Share"
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="BpCalibration"
+              options={{
+                presentation: "modal",
+                animation: "slide_from_bottom",
+                headerShown: false,
+              }}
+            />
           </Stack>
         </O2RingProvider>
       </ThemeProvider>

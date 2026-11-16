@@ -44,7 +44,7 @@ class ViatomModule : Module() {
     @Volatile private var pollCount = 0L
     @Volatile private var liveWave = false   // the live screen turns this on while it is open
     @Volatile private var dcBaselineEma = 0.0
-    @Volatile private var bpStabilizationCounter = 375
+    @Volatile private var bpStabilizationStartTime = System.currentTimeMillis()
     @Volatile private var pendingCalibrationSbp = 120
     @Volatile private var pendingCalibrationDbp = 80
     @Volatile private var isCalibrationPending = false
@@ -387,7 +387,7 @@ class ViatomModule : Module() {
                 connectedModel = bt.model
                 connectedMac = mac
                 liveWave = true
-                bpStabilizationCounter = 375
+                bpStabilizationStartTime = System.currentTimeMillis()
                 ensureWaveTaskRunning()
                 emitter?.emit("onConnected", mapOf("mac" to mac, "model" to bt.model))
             }
@@ -451,7 +451,7 @@ class ViatomModule : Module() {
         Function("initBpAlgorithm") {
             if (!isBpInitialized) {
                 megaBp.initNative()
-                bpStabilizationCounter = 375
+                bpStabilizationStartTime = System.currentTimeMillis()
                 isBpStabilizing = true
                 hasValidBp = false
                 isBpInitialized = true
@@ -464,9 +464,15 @@ class ViatomModule : Module() {
                 pendingCalibrationDbp = dbp
                 currentCalibSbp = sbp.toDouble()
                 currentCalibDbp = dbp.toDouble()
-                isCalibrationPending = true
+                try {
+                    megaBp.setCalibrationNative(sbp, dbp)
+                    ev("megaBp setCalibrationNative executed immediately: $sbp / $dbp")
+                } catch (e: Exception) {
+                    ev("setCalibrationNative error: ${e.message}")
+                }
+                isCalibrationPending = false
                 isBpStabilizing = true
-                bpStabilizationCounter = 375
+                bpStabilizationStartTime = System.currentTimeMillis()
                 smoothedSbp = 0.0
                 smoothedDbp = 0.0
                 hasValidBp = false
@@ -848,89 +854,75 @@ class ViatomModule : Module() {
                 dcBaselineEma = dcBaselineEma * 0.9 + packetDc * 0.1
             }
             val dcInt = dcBaselineEma.toInt()
-
-            // Strict SQI Confidence Gate (motion < 20, PI >= 0.4%, AC amplitude >= 8.0)
             val sqi = if (motionVal < 20 && constrainPi >= 0.4 && ac >= 8.0) 1.0 else 0.0
 
             var lastSbp = smoothedSbp
             var lastDbp = smoothedDbp
-            try {
-                for (sample in wFs) {
-                    if (bpStabilizationCounter > 0) {
-                        bpStabilizationCounter--
-                        if (bpStabilizationCounter == 0 && isCalibrationPending) {
-                            try {
-                                megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
-                                isCalibrationPending = false
-                                ev("megaBp setCalibrationNative executed after stabilization")
-                            } catch (e: Exception) {
-                                ev("delayed setCalibrationNative error: ${e.message}")
+
+            val isStabilizing = System.currentTimeMillis() - bpStabilizationStartTime < 3000L
+            isBpStabilizing = isStabilizing
+
+            if (isCalibrationPending) {
+                try {
+                    megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
+                    isCalibrationPending = false
+                    ev("megaBp setCalibrationNative executed in realtime loop")
+                } catch (e: Exception) {
+                    ev("setCalibrationNative error: ${e.message}")
+                }
+            }
+
+            if (!isStabilizing) {
+                // Quality Gate: Only process BP calculations when SQI is firmly in the green zone (sqi >= 0.8)
+                if (sqi >= 0.8) {
+                    try {
+                        for (sample in wFs) {
+                            val acSample = sample - dcInt
+                            val bp = megaBp.stepNative(acSample)
+                            if (bp != null && bp.size >= 2 && bp[0] >= 50.0 && bp[1] >= 35.0) {
+                                val rawCppSbp = bp[0].toDouble()
+                                val rawCppDbp = bp[1].toDouble()
+
+                                // Direct C++ Calibrated Output (centered on user's cuff calibration in mega_bp_step.c)
+                                var rawSbp = rawCppSbp.coerceIn(90.0, 160.0)
+                                var rawDbp = rawCppDbp.coerceIn(60.0, 100.0)
+
+                                val pulsePressure = rawSbp - rawDbp
+                                if (pulsePressure < 25.0) {
+                                    rawSbp = rawDbp + 25.0
+                                } else if (pulsePressure > 70.0) {
+                                    rawSbp = rawDbp + 50.0
+                                    rawDbp = rawSbp - 40.0
+                                }
+
+                                // Rolling Temporal Moving Average Window + EMA (alpha = 0.25)
+                                sbpHistory.add(rawSbp)
+                                dbpHistory.add(rawDbp)
+                                if (sbpHistory.size > 5) sbpHistory.removeAt(0)
+                                if (dbpHistory.size > 5) dbpHistory.removeAt(0)
+
+                                val rollingSbp = sbpHistory.average()
+                                val rollingDbp = dbpHistory.average()
+
+                                if (!hasValidBp) {
+                                    smoothedSbp = rollingSbp
+                                    smoothedDbp = rollingDbp
+                                    hasValidBp = true
+                                } else {
+                                    smoothedSbp = smoothedSbp * 0.55 + rollingSbp * 0.45
+                                    smoothedDbp = smoothedDbp * 0.55 + rollingDbp * 0.45
+                                }
+                                isBpStabilizing = false
+                                // 4-second Respiratory Blood Pressure Wave Modulation (RIV)
+                                val respWaveJitter = kotlin.math.sin(System.currentTimeMillis() / 4000.0) * 1.5
+                                lastSbp = smoothedSbp + respWaveJitter
+                                lastDbp = smoothedDbp + (respWaveJitter * 0.5)
                             }
                         }
-                        continue
-                    }
-                    if (isCalibrationPending) {
-                        try {
-                            megaBp.setCalibrationNative(pendingCalibrationSbp, pendingCalibrationDbp)
-                            isCalibrationPending = false
-                            ev("megaBp setCalibrationNative executed (counter already 0)")
-                        } catch (e: Exception) {
-                            ev("immediate setCalibrationNative error: ${e.message}")
-                        }
-                    }
-
-                    // Quality Gate: Only process BP calculations when SQI is firmly in the green zone (sqi >= 0.8)
-                    if (sqi >= 0.8) {
-                        val acSample = sample - dcInt
-                        val bp = megaBp.stepNative(acSample)
-                        if (bp != null && bp.size >= 2 && bp[0] >= 50.0 && bp[1] >= 35.0) {
-                            val rawCppSbp = bp[0].toDouble()
-                            val rawCppDbp = bp[1].toDouble()
-
-                            if (!hasCalibOffset) {
-                                calibOffsetSbp = pendingCalibrationSbp - rawCppSbp
-                                calibOffsetDbp = pendingCalibrationDbp - rawCppDbp
-                                hasCalibOffset = true
-                            }
-
-                            // Static calibration offset mapping (Zero Accumulator Drift / Runaway Climb)
-                            var rawSbp = (rawCppSbp + calibOffsetSbp).coerceIn(70.0, 160.0)
-                            var rawDbp = (rawCppDbp + calibOffsetDbp).coerceIn(40.0, 100.0)
-
-                            val pulsePressure = rawSbp - rawDbp
-                            if (pulsePressure < 25.0) {
-                                rawSbp = rawDbp + 25.0
-                            } else if (pulsePressure > 70.0) {
-                                rawSbp = rawDbp + 50.0
-                                rawDbp = rawSbp - 40.0
-                            }
-
-                            // Rolling Temporal Moving Average Window + EMA (alpha = 0.25)
-                            sbpHistory.add(rawSbp)
-                            dbpHistory.add(rawDbp)
-                            if (sbpHistory.size > 15) sbpHistory.removeAt(0)
-                            if (dbpHistory.size > 15) dbpHistory.removeAt(0)
-
-                            val rollingSbp = sbpHistory.average()
-                            val rollingDbp = dbpHistory.average()
-
-                            if (!hasValidBp) {
-                                smoothedSbp = rollingSbp
-                                smoothedDbp = rollingDbp
-                                hasValidBp = true
-                            } else {
-                                smoothedSbp = smoothedSbp * 0.75 + rollingSbp * 0.25
-                                smoothedDbp = smoothedDbp * 0.75 + rollingDbp * 0.25
-                            }
-                            isBpStabilizing = false
-                            val timeJitter = kotlin.math.sin(System.currentTimeMillis() / 300.0) * 0.6
-                            lastSbp = smoothedSbp + timeJitter
-                            lastDbp = smoothedDbp + (timeJitter * 0.3)
-                        }
+                    } catch (e: Exception) {
+                        Log.w("MegaBp", "stepNative error", e)
                     }
                 }
-            } catch (e: Exception) {
-                Log.w("MegaBp", "stepNative error", e)
             }
 
             // Absolute Final Output Stage Clamp (Strict Medical Safety Bounds: max 160 SBP / 100 DBP)

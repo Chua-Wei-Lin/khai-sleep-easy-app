@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useTheme } from "../../../theme/ThemeProvider";
-import { useRouter } from "expo-router";
+import { useTheme } from "../theme/ThemeProvider";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as O2Ring from "@ios-app/viatom-o2ring";
-import { useO2Ring } from "../../../service/O2RingProvider";
+import { useO2Ring } from "../service/O2RingProvider";
 import { Ionicons } from "@expo/vector-icons";
 
 export const BP_CALIBRATION_KEY = "settings:bp_calibration";
@@ -13,9 +13,11 @@ export const BP_CALIBRATION_KEY = "settings:bp_calibration";
 export default function BpCalibrationScreen() {
   const { colors: C, fonts: F } = useTheme();
   const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const { addCalibrationTimestamp } = useO2Ring();
   const [sbp, setSbp] = useState("120.0");
   const [dbp, setDbp] = useState("80.0");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     AsyncStorage.getItem(BP_CALIBRATION_KEY).then((stored) => {
@@ -26,8 +28,19 @@ export default function BpCalibrationScreen() {
           if (parsed.dbp != null) setDbp(String(parsed.dbp));
         } catch {}
       }
+      setIsLoading(false);
+    }).catch(() => {
+      setIsLoading(false);
     });
   }, []);
+
+  const handleExit = () => {
+    if (from === "home") {
+      router.replace("/(tabs)/home");
+    } else {
+      router.replace("/(tabs)/settings");
+    }
+  };
 
   const handleSave = async () => {
     const sbpNum = parseFloat(sbp);
@@ -69,13 +82,19 @@ export default function BpCalibrationScreen() {
       }
     } catch {}
 
-    router.replace("/(tabs)/home");
+    handleExit();
   };
 
+  const handleBack = () => {
+    handleExit();
+  };
+
+  if (isLoading) return null;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: C.bg }]} edges={["bottom", "left", "right"]}>
-      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, marginBottom: 12 }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12, padding: 4 }} activeOpacity={0.7}>
+    <SafeAreaView style={[styles.container, { backgroundColor: C.bg }]} edges={["top", "bottom", "left", "right"]}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, backgroundColor: C.bg2, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, marginBottom: 16 }}>
+        <TouchableOpacity onPress={handleBack} style={{ marginRight: 12, padding: 4 }} activeOpacity={0.7}>
           <Ionicons name="arrow-back" size={24} color={C.text} />
         </TouchableOpacity>
         <Text style={{ fontSize: 18, fontWeight: "800", color: C.text }}>Blood Pressure Calibration</Text>

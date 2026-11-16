@@ -35,7 +35,7 @@ import LiveMotionBarChart from "../../../components/live/LiveMotionBarChart";
 import { useReadingSeries } from "../../../components/live/useReadingSeries";
 import HaemodynamicSummaryCard from "../../../components/live/HaemodynamicSummaryCard";
 import { calculateRespiratoryRate } from "../../../service/HaemodynamicCalculations";
-import { BP_CALIBRATION_KEY } from "../settings/BpCalibration";
+import { BP_CALIBRATION_KEY } from "../../BpCalibration";
 
 const isWatchDevice = (name?: string) => {
   const n = (name || "").toLowerCase();
@@ -125,9 +125,6 @@ export default function Home() {
     battery,
     batteryState,
     disconnect,
-    disconnectCountdown,
-    cancelDisconnect,
-    executeActualDisconnect,
     refreshRealtime,
     isRealtimeReady,
     startScan,
@@ -301,22 +298,22 @@ export default function Home() {
   );
 
   const isValidSpo2 = (v: number) => v >= 20 && v <= 100;
-  const spo2Series = useReadingSeries(spo2, realtimeUpdatedAt, isValidSpo2, connectedDevice?.mac);
+  const spo2Series = useReadingSeries(spo2, realtimeUpdatedAt, isValidSpo2, connectedDevice?.mac, "spo2");
   const isValidPr = (v: number) => v >= 20 && v <= 250;
-  const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac);
+  const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac, "pr");
   const isSignalActive = spo2 != null && spo2 >= 20 && pr != null && pr >= 20;
   const isBpValid = isSignalActive && sbp != null && dbp != null && sbp >= 30 && dbp >= 30;
   const activeSbp = isBpValid ? Math.max(sbp, dbp) : null;
   const activeDbp = isBpValid ? Math.min(sbp, dbp) : null;
 
-  const sbpSeries = useReadingSeries(activeSbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
-  const dbpSeries = useReadingSeries(activeDbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
-  const isValidMotion = (v: number) => v >= 20 && v <= 255;
-  const filteredMotion = motion != null && motion >= 20 ? motion : 0;
-  const motionSeries = useReadingSeries(filteredMotion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac);
+  const sbpSeries = useReadingSeries(activeSbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac, "sbp");
+  const dbpSeries = useReadingSeries(activeDbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac, "dbp");
+  const isValidMotion = (v: number) => v >= 0 && v <= 235;
+  const filteredMotion = motion != null ? Math.max(0, motion - 20) : 0;
+  const motionSeries = useReadingSeries(filteredMotion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac, "motion");
   const rrValue = isSignalActive && pr != null && pr > 0 ? calculateRespiratoryRate([pr]) : null;
   const isValidRr = (v: number) => v >= 5 && v <= 60;
-  const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac);
+  const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac, "rr");
 
   const displaySpo2 =
     spo2 == null || spo2 < 20 || spo2 > 100 ? "--" : `${spo2}`;
@@ -679,7 +676,7 @@ export default function Home() {
                     calibrationTimes={effectiveCalibTimes}
                     calibrationCount={effectiveCalibCount}
                     extraHeaderLabel={effectiveStabilizing ? "Stabilizing..." : undefined}
-                    onPressCalibration={() => router.push("/(tabs)/settings/BpCalibration")}
+                    onPressCalibration={() => router.push("/BpCalibration?from=home")}
                   />
                 )}
 
@@ -759,7 +756,7 @@ export default function Home() {
                           calibrationTimes={effectiveCalibTimes}
                           calibrationCount={effectiveCalibCount}
                           extraHeaderLabel={effectiveStabilizing ? "Stabilizing..." : undefined}
-                          onPressCalibration={() => router.push("/(tabs)/settings/BpCalibration")}
+                          onPressCalibration={() => router.push("/BpCalibration?from=home")}
                         />
                       </View>
                     )}
@@ -867,38 +864,6 @@ export default function Home() {
             v{Constants.expoConfig?.version ?? "1.2.7"}
           </Text>
         </View>
-      )}
-
-      {disconnectCountdown != null && (
-        <Modal
-          visible={true}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={cancelDisconnect}>
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 }}>
-            <View style={{ backgroundColor: C.bg2, borderRadius: 16, padding: 24, width: "100%", maxWidth: 340, alignItems: "center", borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
-              <ActivityIndicator size="large" color={C.tint} style={{ marginBottom: 16 }} />
-              <Text style={{ fontSize: 18, fontWeight: "800", color: C.text, marginBottom: 8, textAlign: "center" }}>
-                Syncing & Uploading
-              </Text>
-              <Text style={{ fontSize: 14, color: C.sub, marginBottom: 20, textAlign: "center", lineHeight: 20 }}>
-                Uploading session records and finalizing sync... Disconnecting in <Text style={{ fontWeight: "800", color: C.tint }}>{disconnectCountdown}s</Text>
-              </Text>
-              <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
-                <Pressable
-                  onPress={cancelDisconnect}
-                  style={{ flex: 1, backgroundColor: C.card, paddingVertical: 12, borderRadius: 10, alignItems: "center", borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.text }}>Cancel</Text>
-                </Pressable>
-                <Pressable
-                  onPress={executeActualDisconnect}
-                  style={{ flex: 1, backgroundColor: C.danger, paddingVertical: 12, borderRadius: 10, alignItems: "center" }}>
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: C.white }}>Disconnect Now</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Modal>
       )}
     </SafeAreaView>
   );

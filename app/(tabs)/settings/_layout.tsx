@@ -47,12 +47,6 @@ export default function SettingsStack() {
           title: "Customize Dashboard Charts",
         }}
       />
-      <Stack.Screen
-        name="BpCalibration"
-        options={{
-          title: "Blood Pressure Calibration",
-        }}
-      />
     </Stack>
   );
 }

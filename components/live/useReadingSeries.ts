@@ -1,43 +1,33 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { liveDataStore, SeriesPoint } from "../../service/LiveDataStore";
 
-export type SeriesPoint = { t: number; v: number };
+export type { SeriesPoint };
 
-/**
- * Keeps a rolling list of valid readings. A point is added every time `updatedAt` changes.
- * Invalid readings (no finger, out of range) are skipped, which leaves a gap in the chart.
- * Pass a stable `isValid` function (define it outside the component).
- */
 export function useReadingSeries(
   value: number | null | undefined,
   updatedAt: number | null | undefined,
   isValid: (v: number) => boolean,
   resetKey: unknown,
+  metricName: string = "series",
   windowMs: number = 30 * 60 * 1000
 ): SeriesPoint[] {
-  const [points, setPoints] = useState<SeriesPoint[]>([]);
-  const lastStamp = useRef<number | null>(null);
-
-  // a new connection starts a new chart
-  useEffect(() => {
-    setPoints([]);
-    lastStamp.current = null;
-  }, [resetKey]);
+  const storeKey = `${String(resetKey ?? "default")}-${metricName}`;
 
   useEffect(() => {
-    if (updatedAt == null || updatedAt === lastStamp.current) return;
-    lastStamp.current = updatedAt;
-    if (value == null || !isValid(value)) return;
+    liveDataStore.addPoint(storeKey, value, updatedAt, isValid, windowMs);
+  }, [storeKey, value, updatedAt, isValid, windowMs]);
 
-    setPoints((prev) => {
-      const cutoff = updatedAt - windowMs;
-      const next =
-        prev.length > 0 && prev[0].t < cutoff
-          ? prev.filter((p) => p.t >= cutoff)
-          : prev.slice();
-      next.push({ t: updatedAt, v: value });
-      return next;
+  const [points, setPoints] = useState<SeriesPoint[]>(() =>
+    liveDataStore.getPoints(storeKey)
+  );
+
+  useEffect(() => {
+    setPoints([...liveDataStore.getPoints(storeKey)]);
+    const unsubscribe = liveDataStore.subscribe(storeKey, (updated) => {
+      setPoints([...updated]);
     });
-  }, [value, updatedAt, isValid, windowMs]);
+    return unsubscribe;
+  }, [storeKey]);
 
   return points;
 }

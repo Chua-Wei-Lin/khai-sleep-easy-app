@@ -18,8 +18,10 @@ export default function Layout() {
     if (Platform.OS === "android") {
       StatusBar.setBackgroundColor(C.bg2, true);
       // Bottom Android navigation bar
-      NavigationBar.setBackgroundColorAsync(C.bg2);
-      NavigationBar.setButtonStyleAsync(isDark ? "light" : "dark");
+      try {
+        NavigationBar.setBackgroundColorAsync(C.bg2);
+        NavigationBar.setButtonStyleAsync(isDark ? "light" : "dark");
+      } catch {}
     }
   }, [isDark, C.bg2]);
 
@@ -64,7 +66,18 @@ export default function Layout() {
       }}>
       <Tabs.Screen name="home" options={{ tabBarLabel: t("home") }} />
       <Tabs.Screen name="history" options={{ tabBarLabel: t("history") }} />
-      <Tabs.Screen name="settings" options={{ tabBarLabel: t("settings") }} />
+      <Tabs.Screen
+        name="settings"
+        options={{ tabBarLabel: t("settings") }}
+        listeners={({ navigation }) => ({
+          tabPress: (e: any) => {
+            e.preventDefault();
+            navigation.navigate("settings", {
+              screen: "index",
+            });
+          },
+        })}
+      />
     </Tabs>
   );
 }

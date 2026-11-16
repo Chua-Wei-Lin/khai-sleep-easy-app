@@ -121,7 +121,7 @@ export default function SettingsScreen() {
             type: "link",
             title: "Blood Pressure Calibration",
             icon: "fitness-outline",
-            route: "/(tabs)/settings/BpCalibration",
+            route: "/BpCalibration?from=settings",
           },
         ],
       },
