@@ -36,6 +36,7 @@ import { useReadingSeries } from "../../../components/live/useReadingSeries";
 import HaemodynamicSummaryCard from "../../../components/live/HaemodynamicSummaryCard";
 import { calculateRespiratoryRate } from "../../../service/HaemodynamicCalculations";
 import { BP_CALIBRATION_KEY } from "../../BpCalibration";
+import { showBpFeature, showRrFeature } from "../../../service/AppVariant";
 
 const isWatchDevice = (name?: string) => {
   const n = (name || "").toLowerCase();
@@ -145,8 +146,8 @@ export default function Home() {
   const [visibleCharts, setVisibleCharts] = useState({
     spo2: true,
     pr: true,
-    bp: true,
-    rr: true,
+    bp: showBpFeature,
+    rr: showRrFeature,
     motion: true,
     ppg: true,
   });

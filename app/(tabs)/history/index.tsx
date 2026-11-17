@@ -29,13 +29,13 @@ import HistoryCard from "../../../components/HistoryCard";
 import { useTheme } from "../../../theme/ThemeProvider";
 import { useO2Ring } from "../../../service/O2RingProvider";
 
-const rawBase = __DEV__ ? API_DEV : API_PROD;
+const rawBase = API_DEV || API_PROD || "https://api.sleepeasysingapore.com";
 const baseURL = rawBase?.replace(/\/+$/, "");
 
 export default function History() {
   const { colors: C, fonts: F } = useTheme();
   const { t } = useTranslation();
-  const { requestHistorySync } = useO2Ring();
+  const { requestHistorySync, historyLastSavedAt } = useO2Ring();
 
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const isUploading = useRef(false);
@@ -234,6 +234,15 @@ export default function History() {
   useEffect(() => {
     autoUpload();
   }, [history, isOnline, patientID, autoUpload]);
+
+  /**
+   * Auto-reload history screen when a new history file finishes downloading
+   */
+  useEffect(() => {
+    if (historyLastSavedAt) {
+      loadHistory();
+    }
+  }, [historyLastSavedAt, loadHistory]);
 
   /**
    * Load history when screen focused

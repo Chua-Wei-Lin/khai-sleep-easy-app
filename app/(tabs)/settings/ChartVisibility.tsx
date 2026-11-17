@@ -4,6 +4,7 @@ import type { Card } from "../../../types/settings";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../../theme/ThemeProvider";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { showBpFeature, showRrFeature } from "../../../service/AppVariant";
 
 export type VisibleCharts = {
   spo2: boolean;
@@ -17,8 +18,8 @@ export type VisibleCharts = {
 export const DEFAULT_VISIBLE_CHARTS: VisibleCharts = {
   spo2: true,
   pr: true,
-  bp: true,
-  rr: true,
+  bp: showBpFeature,
+  rr: showRrFeature,
   motion: true,
   ppg: true,
 };
@@ -65,20 +66,20 @@ export default function ChartVisibilityScreen() {
             icon: "heart-outline",
             switchValue: charts.pr,
           },
-          {
+          ...(showBpFeature ? [{
             id: "bp",
             type: "switch",
             title: "BP Chart",
             icon: "fitness-outline",
             switchValue: charts.bp,
-          },
-          {
+          }] : []),
+          ...(showRrFeature ? [{
             id: "rr",
             type: "switch",
             title: "RR Chart",
             icon: "pulse-outline",
             switchValue: charts.rr,
-          },
+          }] : []),
           {
             id: "motion",
             type: "switch",

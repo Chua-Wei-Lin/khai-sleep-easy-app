@@ -38,7 +38,7 @@ function formatDurationFromSec(seconds: number): string {
  * featuring pre-loaded Method 1 PNG asset logo on the top right, taller charts, and green O2 & PR lines.
  */
 export async function generateAndReturnPdfUri(data: ReportData): Promise<string> {
-  const { id, patientId, startTime, endTime, duration, rows } = data;
+  const { id, patientId, patientName, patientAge, patientSex, startTime, endTime, duration, rows } = data;
   
 
   const validRows = rows ?? [];
@@ -202,10 +202,26 @@ export async function generateAndReturnPdfUri(data: ReportData): Promise<string>
 
         <div class="top-grid">
           <div>
-            <div style="font-weight: bold; font-size: 14px; margin-bottom: 4px; text-align: center; background: #E5E7EB; border: 1.5px solid #333; padding: 4px;">Session: ${sessionDate}</div>
+            <div style="font-weight: bold; font-size: 14px; margin-bottom: 4px; text-align: center; background: #E5E7EB; border: 1.5px solid #333; padding: 4px;">Patient Information</div>
             <table>
               <tr>
-                <td style="text-align: left; font-weight: bold; width: 35%;">Start Time:</td>
+                <td style="text-align: left; font-weight: bold; width: 35%;">Patient ID:</td>
+                <td>${patientId || "N/A"}</td>
+              </tr>
+              <tr>
+                <td style="text-align: left; font-weight: bold;">Name:</td>
+                <td>${patientName || "N/A"}</td>
+              </tr>
+              <tr>
+                <td style="text-align: left; font-weight: bold;">Age:</td>
+                <td>${patientAge || "N/A"}</td>
+              </tr>
+              <tr>
+                <td style="text-align: left; font-weight: bold;">Gender:</td>
+                <td>${patientSex || "N/A"}</td>
+              </tr>
+              <tr>
+                <td style="text-align: left; font-weight: bold;">Start Time:</td>
                 <td>${startTime || "N/A"}</td>
               </tr>
               <tr>

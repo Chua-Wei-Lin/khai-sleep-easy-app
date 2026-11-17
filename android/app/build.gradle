@@ -34,6 +34,9 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+def appVariant = System.getenv("APP_VARIANT") ?: "patient"
+def isDistributor = appVariant == "distributor"
+
 android {
     //ndkVersion rootProject.ext.ndkVersion
 
@@ -48,7 +51,13 @@ android {
 
     namespace 'com.sleepeasy.app'
     defaultConfig {
-        applicationId 'com.sleepeasy.app'
+        if (isDistributor) {
+            applicationId "com.sleepeasy.app.distributor"
+            resValue "string", "app_name", "SleepEasy Distributor"
+        } else {
+            applicationId "com.sleepeasy.app.patient"
+            resValue "string", "app_name", "SleepEasy Patient"
+        }
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

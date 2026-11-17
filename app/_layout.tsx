@@ -198,8 +198,8 @@ function InnerLayout() {
             <Stack.Screen
               name="BpCalibration"
               options={{
-                presentation: "modal",
-                animation: "slide_from_bottom",
+                presentation: "card",
+                animation: "slide_from_right",
                 headerShown: false,
               }}
             />

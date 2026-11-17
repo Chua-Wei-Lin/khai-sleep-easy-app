@@ -57,6 +57,7 @@ type O2RingContextValue = {
   motion: number | null;
   realtimeUpdatedAt: number | null;
   isDownloadingHistory: boolean;
+  historyLastSavedAt: number | null;
   downloadProgress: number;
   downloadTotalFiles: number;
   downloadCompletedFiles: number;
@@ -122,6 +123,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
     null
   );
   const [isDownloadingHistory, setIsDownloadingHistory] = useState(false);
+  const [historyLastSavedAt, setHistoryLastSavedAt] = useState<number | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadCounts, setDownloadCounts] = useState({
     total: 0,
@@ -1180,6 +1182,9 @@ const processReadQueue = useCallback(() => {
             serial,
             patient
           );
+          if (saved) {
+            setHistoryLastSavedAt(Date.now());
+          }
 
           // Attempt immediate upload for newly downloaded file (best-effort; falls back to History screen auto-upload)
           if (baseURL) {
@@ -1819,6 +1824,7 @@ const processReadQueue = useCallback(() => {
       motion,
       realtimeUpdatedAt,
       isDownloadingHistory,
+      historyLastSavedAt,
       downloadProgress,
       downloadTotalFiles: downloadCounts.total,
       downloadCompletedFiles: downloadCounts.completed,
@@ -1863,6 +1869,7 @@ const processReadQueue = useCallback(() => {
       motion,
       realtimeUpdatedAt,
       isDownloadingHistory,
+      historyLastSavedAt,
       downloadProgress,
       downloadCounts.total,
       downloadCounts.completed,

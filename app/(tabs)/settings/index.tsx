@@ -8,6 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import SettingsList from "../../../components/SettingsList";
 import { useTheme } from "../../../theme/ThemeProvider";
 import { useO2Ring } from "../../../service/O2RingProvider";
+import { isDistributorApp } from "../../../service/AppVariant";
 import type { Card } from "../../../types/settings";
 
 export default function SettingsScreen() {
@@ -116,13 +117,13 @@ export default function SettingsScreen() {
             icon: "options-outline",
             route: "/(tabs)/settings/ChartVisibility",
           },
-          {
+          ...(isDistributorApp ? [{
             id: "bpCalibration",
             type: "link",
             title: "Blood Pressure Calibration",
             icon: "fitness-outline",
             route: "/BpCalibration?from=settings",
-          },
+          }] : []),
         ],
       },
       /*

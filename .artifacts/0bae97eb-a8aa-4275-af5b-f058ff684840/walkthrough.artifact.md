@@ -1,13 +1,12 @@
-# 120/80 Calibration Default & Async Loading Flash Fix Walkthrough
+# App Variant Naming Update Walkthrough
 
-Successfully updated [BpCalibration.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/BpCalibration.tsx).
+Successfully updated [app.config.js](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app.config.js) and [build.gradle](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/android/app/build.gradle).
 
 ## Changes Made
 
-### BP Calibration Screen (`BpCalibration.tsx`)
-- **Restored 120/80 Default Baseline**: Reset default inputs and reset button targets back to `120 / 80 mmHg`.
-- **Async Loading Gate (`isLoading`)**: Pauses rendering until AsyncStorage finishes loading saved calibration values, completely eliminating the visual flash where inputs jumped from default to saved values.
+### Variant Naming (`app.config.js` & `build.gradle`)
+- **Updated App Name**: Changed the app name for the distributor variant from `"SleepEasy Staff"` to **`"SleepEasy Distributor"`** across `app.config.js` and `android/app/build.gradle`.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- Calibration screen loads smoothly at 120/80 without flashing.
+- App display name updated to "SleepEasy Distributor".

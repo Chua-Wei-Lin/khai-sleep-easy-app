@@ -389,15 +389,22 @@ export default function DetailedReport() {
         const patientDataStr = await AsyncStorage.getItem("patientData");
         if (patientDataStr) {
           const p = JSON.parse(patientDataStr);
-          if (p.name) setPatientName(p.name);
-          if (p.birthdate) {
-            const dob = new Date(p.birthdate);
+          const nameVal = p.name || p.patient_name || p.full_name;
+          if (nameVal) setPatientName(nameVal);
+
+          const dobVal = p.birthdate || p.dob;
+          if (p.age) {
+            setPatientAge(String(p.age));
+          } else if (dobVal) {
+            const dob = new Date(dobVal);
             const diff = Date.now() - dob.getTime();
             const ageDate = new Date(diff);
             const calculatedAge = Math.abs(ageDate.getUTCFullYear() - 1970);
-            setPatientAge(`${calculatedAge} (${p.birthdate})`);
+            setPatientAge(`${calculatedAge} (${dobVal})`);
           }
-          if (p.sex || p.gender) setPatientSex(p.sex || p.gender);
+
+          const sexVal = p.sex || p.gender;
+          if (sexVal) setPatientSex(sexVal);
         }
       } catch (error) {
         console.warn("Error@DetailedReport.tsx/useEffect:", error);

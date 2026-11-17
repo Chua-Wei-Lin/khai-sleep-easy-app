@@ -7,7 +7,13 @@
   ],
   "scripts": {
     "start": "expo start",
+    "start:patient": "npx cross-env APP_VARIANT=patient EXPO_PUBLIC_APP_VARIANT=patient expo start --dev-client --clear",
+    "start:distributor": "npx cross-env APP_VARIANT=distributor EXPO_PUBLIC_APP_VARIANT=distributor expo start --dev-client --clear",
     "android": "expo run:android",
+    "android:patient": "npx cross-env APP_VARIANT=patient EXPO_PUBLIC_APP_VARIANT=patient npx expo run:android",
+    "android:distributor": "npx cross-env APP_VARIANT=distributor EXPO_PUBLIC_APP_VARIANT=distributor npx expo run:android",
+    "build:patient": "npx cross-env APP_VARIANT=patient EXPO_PUBLIC_APP_VARIANT=patient npx eas-cli build --platform android --profile preview --local --clear-cache",
+    "build:distributor": "npx cross-env APP_VARIANT=distributor EXPO_PUBLIC_APP_VARIANT=distributor npx eas-cli build --platform android --profile preview --local --clear-cache",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "postinstall": "patch-package"
@@ -61,6 +67,7 @@
     "@react-native/metro-config": "^0.87.1",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "^54.0.3",
+    "cross-env": "^7.0.3",
     "typescript": "~5.9.2"
   }
 }
