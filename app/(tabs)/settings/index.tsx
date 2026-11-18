@@ -17,7 +17,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { disconnect } = useO2Ring();
 
-  const appVersion = Constants.expoConfig.version;
+  const appVersion = Constants.expoConfig?.version ?? "1.3.3";
 
   const [switches, setSwitches] = useState<Record<string, boolean>>({
     dark: isDark,

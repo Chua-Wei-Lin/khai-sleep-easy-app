@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { Stack } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../../theme/ThemeProvider";
@@ -16,7 +17,7 @@ export default function SettingsStack() {
         headerTintColor: C.text,
         contentStyle: { backgroundColor: C.bg },
         gestureEnabled: true,
-        gestureDirection: "horizontal",
+        animation: Platform.OS === "ios" ? "ios" : "slide_from_right",
       }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen

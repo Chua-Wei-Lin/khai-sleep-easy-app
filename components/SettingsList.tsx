@@ -71,7 +71,7 @@ export default function SettingsList({
       items.push({ kind: "spacer", id: c.id + "-gap" });
     });
 
-    if (ctaFlag.enabled) items.push({ kind: "cta" });
+    if (ctaFlag?.enabled) items.push({ kind: "cta" });
     return items;
   }, [cards]);
 

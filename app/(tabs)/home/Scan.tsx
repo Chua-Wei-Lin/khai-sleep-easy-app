@@ -23,9 +23,12 @@ const isWatchDevice = (name?: string) => {
 };
 
 const getDeviceImage = (name?: string, model?: number) => {
-  const n = (name || "").toLowerCase();
+  const n = (name || "").toLowerCase().replace(/[\s_-]/g, "");
   if (n.includes("kidso2")) {
     return require("../../../assets/images/KidsO2Ring.png");
+  }
+  if (n.includes("o2ring") || n.includes("wearo2")) {
+    return require("../../../assets/images/O2RingBGR.png");
   }
   if (isWatchDevice(name) || (model != null && model !== 4 && model !== 2)) {
     return require("../../../assets/images/O2 Watch.png");
