@@ -233,7 +233,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     prRef.current = pr;
   }, [pr]);
-  const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
+  const rawBase = API_DEV || API_PROD;
   const baseURL = rawBase?.replace(/\/+$/, "");
 
   // -------------------

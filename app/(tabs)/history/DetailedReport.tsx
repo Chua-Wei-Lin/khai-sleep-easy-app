@@ -29,7 +29,7 @@ import * as Sharing from "expo-sharing";
 import { API_DEV, API_PROD } from "@env";
 import { useFont } from "@shopify/react-native-skia";
 
-const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
+const rawBase = API_DEV || API_PROD;
 const baseURL = rawBase?.replace(/\/+$/, "");
 
 type Row = { t: number; spo2: number; pr: number; motion?: number }; // ms timestamp, SpO2, Pulse, Motion

@@ -29,7 +29,7 @@ import HistoryCard from "../../../components/HistoryCard";
 import { useTheme } from "../../../theme/ThemeProvider";
 import { useO2Ring } from "../../../service/O2RingProvider";
 
-const rawBase = API_DEV || "http://192.168.2.204/SleepEasy/ApiBackend";
+const rawBase = API_DEV || API_PROD;
 const baseURL = rawBase?.replace(/\/+$/, "");
 
 export default function History() {
