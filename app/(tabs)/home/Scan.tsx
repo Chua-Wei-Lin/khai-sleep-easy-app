@@ -17,9 +17,9 @@ import { useTheme } from "../../../theme/ThemeProvider";
 import { DeviceItem, useO2Ring } from "../../../service/O2RingProvider";
 
 const isWatchDevice = (name?: string) => {
-  const n = (name || "").toLowerCase();
-  if (n.includes("kidso2") || n.includes("o2ring")) return false;
-  return /watch|band|wrist|o2w|checkme|o2m|^o2\s+\d+/i.test(n);
+  const n = (name || "").toLowerCase().replace(/[\s_-]/g, "");
+  if (n.includes("kidso2") || n.includes("o2ring") || n.includes("wearo2")) return false;
+  return /watch|band|wrist|o2w|checkme|o2m/i.test(n);
 };
 
 const getDeviceImage = (name?: string, model?: number) => {

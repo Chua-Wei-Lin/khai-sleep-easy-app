@@ -15,6 +15,8 @@ export default function SettingsStack() {
         headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
         headerTintColor: C.text,
         contentStyle: { backgroundColor: C.bg },
+        gestureEnabled: true,
+        gestureDirection: "horizontal",
       }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen

@@ -7,6 +7,7 @@ import {
   Switch,
   TextInput,
   TextInputProps,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../theme/ThemeProvider";
@@ -108,12 +109,14 @@ function SettingsRow({
 
       {/* Right accessory */}
       {isSwitch ? (
-        <Switch
-          value={!!switchValue}
-          onValueChange={(next) => onToggleSwitch?.(next)}
-          trackColor={{ false: C.sub, true: C.sub }}
-          thumbColor={switchValue ? C.tint : C.tint}
-        />
+        <View style={{ transform: Platform.OS === "ios" ? [{ scale: 0.85 }] : undefined, justifyContent: "center", alignItems: "flex-end" }}>
+          <Switch
+            value={!!switchValue}
+            onValueChange={(next) => onToggleSwitch?.(next)}
+            trackColor={{ false: C.sub, true: C.tint }}
+            thumbColor={C.white}
+          />
+        </View>
       ) : type === "link" ? (
         <Ionicons
           name="chevron-forward"
