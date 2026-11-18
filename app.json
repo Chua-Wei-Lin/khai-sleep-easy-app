@@ -45,6 +45,9 @@
       [
         "expo-build-properties",
         {
+          "ios": {
+            "enableSceneSupport": true
+          },
           "android": {
             "usesCleartextTraffic": true,
             "ndkVersion": "26.1.10909125",

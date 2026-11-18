@@ -2,8 +2,11 @@
 const {
   withAppBuildGradle,
   withSettingsGradle,
+  withDangerousMod,
   createRunOncePlugin,
 } = require("@expo/config-plugins");
+const fs = require("fs");
+const path = require("path");
 
 const LIVE_EVENTBUS_PROJECT = `
 include ':liveeventbus-x'
@@ -52,9 +55,54 @@ const withViatomDeps = (config) =>
     return config;
   });
 
+const withSceneDelegate = (config) => {
+  return withDangerousMod(config, [
+    "ios",
+    async (config) => {
+      const iosRoot = path.join(config.modRequest.platformProjectRoot);
+      const dirs = fs.readdirSync(iosRoot);
+      const projDirName = dirs.find(
+        (d) =>
+          fs.existsSync(path.join(iosRoot, d, "AppDelegate.swift")) ||
+          fs.existsSync(path.join(iosRoot, d, "AppDelegate.mm"))
+      );
+      if (projDirName) {
+        const targetDir = path.join(iosRoot, projDirName);
+        const sceneDelegateCode = `import UIKit
+import Expo
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard let windowScene = scene as? UIWindowScene else { return }
+    let window = UIWindow(windowScene: windowScene)
+    self.window = window
+
+    if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+      appDelegate.window = window
+      if appDelegate.responds(to: Selector(("startReactNative:with:"))) {
+        appDelegate.perform(Selector(("startReactNative:with:")), with: window, with: connectionOptions)
+      }
+    }
+  }
+}
+`;
+        fs.writeFileSync(path.join(targetDir, "SceneDelegate.swift"), sceneDelegateCode);
+      }
+      return config;
+    },
+  ]);
+};
+
 const plugin = (config) => {
   config = withViatomSettings(config);
   config = withViatomDeps(config);
+  config = withSceneDelegate(config);
   return config;
 };
 
