@@ -5,9 +5,9 @@ module.exports = ({ config }) => {
   return {
     ...config,
     name: isDistributor ? "SleepEasy Distributor" : "SleepEasy Patient",
-    slug: isDistributor ? "sleep-easy-app-distributor" : "sleep-easy-app-patient",
-    scheme: isDistributor ? "sleep-easy-app-distributor" : "sleep-easy-app-patient",
-    version: "1.3.3",
+    slug: "sleep-easy-app",
+    scheme: "sleep-easy-app",
+    version: "1.3.4",
     orientation: "portrait",
     icon: "./assets/sleepeasylogo-android.png",
     userInterfaceStyle: "light",

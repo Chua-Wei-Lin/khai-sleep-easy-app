@@ -51,11 +51,12 @@ android {
 
     namespace 'com.sleepeasy.app'
     defaultConfig {
+        applicationId "com.sleepeasy.app"
         if (isDistributor) {
-            applicationId "com.sleepeasy.app.distributor"
+            applicationIdSuffix ".distributor"
             resValue "string", "app_name", "SleepEasy Distributor"
         } else {
-            applicationId "com.sleepeasy.app.patient"
+            applicationIdSuffix ".patient"
             resValue "string", "app_name", "SleepEasy Patient"
         }
         minSdkVersion rootProject.ext.minSdkVersion

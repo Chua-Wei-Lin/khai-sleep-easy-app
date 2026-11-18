@@ -1,12 +1,13 @@
-# App Variant Naming Update Walkthrough
+# EAS Build Static Application ID & Suffix Walkthrough
 
-Successfully updated [app.config.js](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app.config.js) and [build.gradle](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/android/app/build.gradle).
+Successfully updated [build.gradle](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/android/app/build.gradle) and [app.config.js](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app.config.js).
 
 ## Changes Made
 
-### Variant Naming (`app.config.js` & `build.gradle`)
-- **Updated App Name**: Changed the app name for the distributor variant from `"SleepEasy Staff"` to **`"SleepEasy Distributor"`** across `app.config.js` and `android/app/build.gradle`.
+### Native Gradle & Config (`build.gradle` & `app.config.js`)
+- **Static Base `applicationId "com.sleepeasy.app"` + Suffix**: Updated `android/app/build.gradle` to define a static literal `applicationId "com.sleepeasy.app"` so EAS Build and Expo CLI static parsers can read it successfully, while `applicationIdSuffix` dynamically appends `.patient` or `.distributor`.
+- **Slug Match**: Confirmed `slug: "sleep-easy-app"` in `app.config.js` matches `extra.eas.projectId`.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- App display name updated to "SleepEasy Distributor".
+- EAS Build parses application ID and slug cleanly.
