@@ -72,7 +72,7 @@ export default function SettingsScreen() {
             type: "link",
             title: t("patientProfile"),
             icon: "person-circle-outline",
-            route: "/(tabs)/settings/Profile",
+            route: "./Profile",
           },
         ],
       },
@@ -93,7 +93,7 @@ export default function SettingsScreen() {
             type: "link",
             title: t("notification"),
             icon: "notifications-outline",
-            route: "/(tabs)/settings/Notification",
+            route: "./Notification",
           },
           */
           {
@@ -101,21 +101,21 @@ export default function SettingsScreen() {
             type: "link",
             title: t("language"),
             icon: "language-outline",
-            route: "/(tabs)/settings/Language",
+            route: "./Language",
           },
           {
             id: "ppgHzRoute",
             type: "link",
             title: "PPG Sampling Rate",
             icon: "pulse-outline",
-            route: "/(tabs)/settings/PpgHz",
+            route: "./PpgHz",
           },
           {
             id: "chartVisibility",
             type: "link",
             title: "Customize Dashboard Charts",
             icon: "options-outline",
-            route: "/(tabs)/settings/ChartVisibility",
+            route: "./ChartVisibility",
           },
           ...(isDistributorApp ? [{
             id: "bpCalibration",

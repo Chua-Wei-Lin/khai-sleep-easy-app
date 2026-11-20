@@ -97,7 +97,12 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
       throw ViatomException(code: "INVALID_DEVICE", description: "Invalid device identifier")
     }
 
-    let peripheral = discoveredDevices[identifier]?.peripheral ?? central?.retrievePeripherals(withIdentifiers: [identifier]).first
+    let connectedPeripherals = central?.retrieveConnectedPeripherals(withServices: []) ?? []
+    let matchedConnected = connectedPeripherals.first { $0.identifier == identifier }
+
+    let peripheral = discoveredDevices[identifier]?.peripheral ??
+                     central?.retrievePeripherals(withIdentifiers: [identifier]).first ??
+                     matchedConnected
 
     guard let target = peripheral else {
       throw ViatomException(code: "DEVICE_NOT_FOUND", description: "Unable to find peripheral with identifier \(mac)")

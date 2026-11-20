@@ -1,12 +1,12 @@
-# Native Tab Navigation History Walkthrough
+# Relative Route Paths for Settings Sub-Tabs Walkthrough
 
-Successfully updated [(_layout.tsx)](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/_layout.tsx).
+Successfully updated [index.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/index.tsx).
 
 ## Changes Made
 
-### Tabs Layout (`_layout.tsx`)
-- **Restored Native Tab Press Behavior**: Removed the custom `tabPress` stack-reset listener from the Settings tab screen. This allows Expo Router to manage stack history naturally, ensuring the back button works repeatedly without getting stuck.
+### Settings Index (`index.tsx`)
+- **Relative Route Paths (`./Profile`, `./Language`, `./PpgHz`, `./ChartVisibility`)**: Converted absolute paths (`/(tabs)/settings/...`) to relative paths (`./...`). This forces Expo Router to push sub-screens onto the active stack correctly rather than treating them as tab switches, permanently resolving the single-use back button trap.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- Back button and tab navigation operate smoothly.
+- Sub-tab back buttons work repeatedly without getting stuck.
