@@ -160,6 +160,13 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
     return true
   }
 
+  func setLiveWaveEnabled(_ enabled: Bool) {
+    if enabled {
+      communicator?.beginGetRealData()
+      communicator?.beginGetRealWave()
+    }
+  }
+
   // MARK: - CBCentralManagerDelegate
 
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -607,7 +614,7 @@ public final class ViatomModule: Module {
     )
 
     OnStartObserving {
-      Task { @MainActor [weak self] in
+      DispatchQueue.main.async { [weak self] in
         guard let self = self else { return }
         let manager = self.getOrCreateManager()
         manager.eventSink = { [weak self] name, payload in
@@ -617,9 +624,8 @@ public final class ViatomModule: Module {
     }
 
     OnStopObserving {
-      Task { @MainActor [weak self] in
-        guard let self = self else { return }
-        self.managerInstance?.eventSink = nil
+      DispatchQueue.main.async { [weak self] in
+        self?.managerInstance?.eventSink = nil
       }
     }
 
@@ -686,10 +692,7 @@ public final class ViatomModule: Module {
 
     AsyncFunction("setLiveWave") { (enable: Bool) in
       return await self.withManager { manager in
-        if enable {
-          manager.communicator?.beginGetRealData()
-          manager.communicator?.beginGetRealWave()
-        }
+        manager.setLiveWaveEnabled(enable)
         return true
       }
     }
