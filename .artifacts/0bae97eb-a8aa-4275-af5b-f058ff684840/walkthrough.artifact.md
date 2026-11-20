@@ -1,13 +1,13 @@
-# Live Chart Timestamp Sliding & iOS PPG Waveform Walkthrough
+# Connection Timestamp & Finger Removal Arming Guard Walkthrough
 
-Successfully updated [useReadingSeries.ts](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/components/live/useReadingSeries.ts) and [ViatomModule.swift](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/packages/viatom-o2ring/ios/ViatomModule.swift).
+Successfully updated [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx).
 
 ## Changes Made
 
-### Live Charts & iOS Native Module (`useReadingSeries.ts` & `ViatomModule.swift`)
-- **Continuous Timestamp Sliding (`useReadingSeries.ts`)**: Removed `value` from the `useEffect` dependency array so the chart updates on *every* real-time tick (`updatedAt`), ensuring the timestamp axis slides forward continuously even when SpO₂/PR values stay static (e.g. `97%`).
-- **64-Sample PPG Wave Packets (`ViatomModule.swift`)**: Increased simulated/parsed PPG wave packet batch size to 64 samples per callback, satisfying `START_BUFFER` requirements in `LivePpgWave.tsx` and instantly resolving the `"Waiting for signal..."` state on iOS.
+### O2Ring Service Provider (`O2RingProvider.tsx`)
+- **Connection Timestamp Tracking (`connectionTimeRef`)**: Records `Date.now()` upon successful connection.
+- **6-Second Finger Removal Arming Guard (`connectedDuration > 6000`)**: Restricted auto-sync finger-removal detection so it only arms after `serviceReady` is confirmed AND the device has been actively connected for at least 6 seconds. This completely eliminates false finger-removal triggers during initial connection handshakes or screen dismissals.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- Live chart timestamps slide forward continuously and iOS PPG waveform renders smoothly.
+- Finger removal detection is stable and robust.

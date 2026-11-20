@@ -226,6 +226,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const connectingRef = React.useRef(false);
   const autoConnectingRef = React.useRef(false);
   const offFingerCountRef = React.useRef(0);
+  const connectionTimeRef = React.useRef(0);
   const isAutoDisconnectActiveRef = React.useRef(false);
   const offFingerTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isManualConnectingRef = React.useRef(false);
@@ -850,15 +851,18 @@ const processReadQueue = useCallback(() => {
         if (validSpo2 == null || validSpo2 <= 0 || validPr == null || validPr <= 0) {
           offFingerCountRef.current++;
           if (offFingerCountRef.current >= 2 && connectedDeviceRef.current && !isAutoDisconnectActiveRef.current && !connectingRef.current) {
-            if (!offFingerTimerRef.current) {
-              console.log("[O2Ring] Finger removal detected. Waiting 3s before starting sync countdown...");
-              offFingerTimerRef.current = setTimeout(() => {
-                offFingerTimerRef.current = null;
-                if (connectedDeviceRef.current && !isAutoDisconnectActiveRef.current) {
-                  isAutoDisconnectActiveRef.current = true;
-                  startAutoDisconnectCountdown();
-                }
-              }, 3000);
+            const connectedDuration = connectionTimeRef.current ? Date.now() - connectionTimeRef.current : 0;
+            if (serviceReadyRef.current && connectedDuration > 6000) {
+              if (!offFingerTimerRef.current) {
+                console.log("[O2Ring] Finger removal detected. Waiting 3s before starting sync countdown...");
+                offFingerTimerRef.current = setTimeout(() => {
+                  offFingerTimerRef.current = null;
+                  if (connectedDeviceRef.current && !isAutoDisconnectActiveRef.current) {
+                    isAutoDisconnectActiveRef.current = true;
+                    startAutoDisconnectCountdown();
+                  }
+                }, 3000);
+              }
             }
           }
         } else {
@@ -1355,6 +1359,7 @@ const processReadQueue = useCallback(() => {
         connectedDeviceRef.current = resolvedDevice;
         setConnectedDevice(resolvedDevice);
         rememberDevice(resolvedDevice);
+        connectionTimeRef.current = Date.now();
 
         const connectPromise = O2Ring.connect(resolvedDevice.mac, resolvedDevice.model);
         const timeoutPromise = new Promise((_, reject) =>
