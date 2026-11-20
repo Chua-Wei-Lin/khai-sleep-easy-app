@@ -373,6 +373,7 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
     }
     communicator.beginGetInfo()
     communicator.beginGetRealData()
+    communicator.beginGetRealWave()
   }
 
   private func cleanupConnection() {

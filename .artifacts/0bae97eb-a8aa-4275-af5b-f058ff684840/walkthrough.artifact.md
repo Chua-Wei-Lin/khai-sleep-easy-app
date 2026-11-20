@@ -1,13 +1,13 @@
-# Strict Arming Guard & SVG Bounds Protection Walkthrough
+# Continuous Series Point Accumulation & iOS Real Wave Walkthrough
 
-Successfully updated [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx) and [LivePpgWave.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/components/live/LivePpgWave.tsx).
+Successfully updated [useReadingSeries.ts](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/components/live/useReadingSeries.ts) and [ViatomModule.swift](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/packages/viatom-o2ring/ios/ViatomModule.swift).
 
 ## Changes Made
 
-### O2Ring Provider & Wave Component (`O2RingProvider.tsx` & `LivePpgWave.tsx`)
-- **Strict Arming Guard (`isArmed`)**: Wrapped `offFingerCountRef` counter increment inside `if (isArmed)` where `isArmed = serviceReadyRef.current && connectedDuration > 6000`. This ensures `offFingerCountRef` stays strictly 0 during initial connection handshakes and screen dismissals, completely eliminating false finger-removal triggers on connect.
-- **SVG Dimension Protection (`width > 0 && height > 0`)**: Guarded `<Svg>` rendering in `LivePpgWave.tsx` so paths never render when width/height are zero, eliminating `clip: empty path.` log spam.
+### Reading Series Hook & iOS Native Module (`useReadingSeries.ts` & `ViatomModule.swift`)
+- **Strict `resetKey` Equality Guard (`prevResetKey`)**: Updated `useReadingSeries.ts` to check `resetKey !== prevResetKey.current`. This prevents re-renders with identical MAC addresses from calling `setPoints([])` and wiping out chart data back to a single frame.
+- **Native iOS `beginGetRealWave()`**: Added `communicator.beginGetRealWave()` to `bootstrapAfterServiceReady()` in `ViatomModule.swift` to start native optical wave data callbacks.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- False finger removal is eliminated and SVG paths render safely.
+- Live chart series accumulate continuously without resetting to single frames.

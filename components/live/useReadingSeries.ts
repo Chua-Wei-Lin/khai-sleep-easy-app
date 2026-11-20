@@ -11,10 +11,14 @@ export function useReadingSeries(
 ): SeriesPoint[] {
   const [points, setPoints] = useState<SeriesPoint[]>([]);
   const lastStamp = useRef<number | null>(null);
+  const prevResetKey = useRef<unknown>(null);
 
   useEffect(() => {
-    setPoints([]);
-    lastStamp.current = null;
+    if (resetKey != null && resetKey !== prevResetKey.current) {
+      prevResetKey.current = resetKey;
+      setPoints([]);
+      lastStamp.current = null;
+    }
   }, [resetKey]);
 
   useEffect(() => {
