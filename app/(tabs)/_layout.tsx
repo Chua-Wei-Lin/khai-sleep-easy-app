@@ -66,18 +66,7 @@ export default function Layout() {
       }}>
       <Tabs.Screen name="home" options={{ tabBarLabel: t("home") }} />
       <Tabs.Screen name="history" options={{ tabBarLabel: t("history") }} />
-      <Tabs.Screen
-        name="settings"
-        options={{ tabBarLabel: t("settings") }}
-        listeners={({ navigation }) => ({
-          tabPress: (e: any) => {
-            e.preventDefault();
-            navigation.navigate("settings", {
-              screen: "index",
-            });
-          },
-        })}
-      />
+      <Tabs.Screen name="settings" options={{ tabBarLabel: t("settings") }} />
     </Tabs>
   );
 }

@@ -1346,18 +1346,19 @@ const processReadQueue = useCallback(() => {
         serviceReadyRef.current = false;
         setIosRealtimeReady(false);
         const effectiveModel = resolveDeviceModel(device.name, device.model);
-        console.log("[O2Ring] connecting", device.name, "model:", effectiveModel);
+        const resolvedDevice = { ...device, model: effectiveModel };
+        console.log("[O2Ring] connecting", resolvedDevice.name, "model:", effectiveModel);
 
-        const connectPromise = O2Ring.connect(device.mac, effectiveModel);
+        const connectPromise = O2Ring.connect(resolvedDevice.mac, resolvedDevice.model);
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Connection timed out. Please ensure the device is turned on and nearby.")), 12000)
         );
         await Promise.race([connectPromise, timeoutPromise]);
 
         // Set connected ref early so listeners know
-        connectedDeviceRef.current = device;
-        setConnectedDevice(device);
-        rememberDevice(device);
+        connectedDeviceRef.current = resolvedDevice;
+        setConnectedDevice(resolvedDevice);
+        rememberDevice(resolvedDevice);
 
         // Verify true device reachability (detect Android phantom connections when device is off)
         try {
