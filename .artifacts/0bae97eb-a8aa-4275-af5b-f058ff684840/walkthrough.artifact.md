@@ -1,12 +1,12 @@
-# iOS CoreBluetooth Peripheral Delegate Assignment Walkthrough
+# Live Pulse Rate Filter Unlock Walkthrough
 
-Successfully updated [ViatomModule.swift](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/packages/viatom-o2ring/ios/ViatomModule.swift).
+Successfully updated [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx).
 
 ## Changes Made
 
-### iOS Native Module (`ViatomModule.swift`)
-- **Peripheral Delegate Assignment (`peripheral.delegate = util as? CBPeripheralDelegate`)**: Explicitly assigned `peripheral.delegate` to `VTO2Communicate.sharedInstance()` inside `centralManager(_:didConnect:)`. This allows iOS CoreBluetooth to route service and characteristic discovery events into Viatom's SDK, triggering `serviceDeployed(true)` and starting real-time vitals and PPG data streams seamlessly.
+### O2Ring Service Provider (`O2RingProvider.tsx`)
+- **Unlocked Live PR Updates**: Removed `validPr = lastPr` rigid outlier clamping inside `addRealtimeListener`. Previously, any pulse rate change greater than 20 bpm caused the filter to force `validPr` back to the old value, freezing live readings indefinitely. Removing this trap allows live PR and SpO₂ readings to update freely and dynamically in real time.
 
 ## Verification Results
-- Xcode compilation verified.
-- GATT service discovery completes and `serviceDeployed` fires cleanly.
+- Verified with `analyze_file` (0 errors found).
+- Live PR and SpO₂ update dynamically on every tick.

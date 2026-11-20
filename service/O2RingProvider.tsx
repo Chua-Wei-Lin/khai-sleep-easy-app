@@ -842,13 +842,7 @@ const processReadQueue = useCallback(() => {
 
       subRt = O2Ring.addRealtimeListener((rt) => {
         let validPr = rt.pr;
-        if (validPr != null && (validPr < 40 || validPr > 180)) validPr = null;
-        if (validPr != null && prBuffer.current.length > 0) {
-          const lastPr = prBuffer.current[prBuffer.current.length - 1];
-          if (Math.abs(validPr - lastPr) > 20) {
-            validPr = lastPr; // reject transient outlier spike
-          }
-        }
+        if (validPr != null && (validPr < 30 || validPr > 250)) validPr = null;
         if (validPr != null) {
           prBuffer.current.push(validPr);
           if (prBuffer.current.length > 5) prBuffer.current.shift();
