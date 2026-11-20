@@ -122,6 +122,25 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
     return true
   }
 
+  private var realtimeTimer: Timer?
+
+  private func startRealtimeTimer() {
+    stopRealtimeTimer()
+    DispatchQueue.main.async { [weak self] in
+      self?.realtimeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+        guard let self = self, self.connectedPeripheral != nil, self.isServiceReady, let communicator = self.communicator else { return }
+        communicator.beginGetRealData()
+      }
+    }
+  }
+
+  private func stopRealtimeTimer() {
+    DispatchQueue.main.async { [weak self] in
+      self?.realtimeTimer?.invalidate()
+      self?.realtimeTimer = nil
+    }
+  }
+
   func startRealtime() throws -> Bool {
     guard connectedPeripheral != nil else {
       throw ViatomException(code: "NO_DEVICE_CONNECTED", description: "No active O2Ring connection")
@@ -130,10 +149,13 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
       throw ViatomException(code: "SERVICE_NOT_READY", description: "Service not ready yet")
     }
     communicator.beginGetRealData()
+    communicator.beginGetRealWave()
+    startRealtimeTimer()
     return true
   }
 
   func stopRealtime() -> Bool {
+    stopRealtimeTimer()
     return true
   }
 
@@ -384,9 +406,11 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
     communicator.beginGetInfo()
     communicator.beginGetRealData()
     communicator.beginGetRealWave()
+    startRealtimeTimer()
   }
 
   private func cleanupConnection() {
+    stopRealtimeTimer()
     connectedPeripheral = nil
     connectedIdentifier = nil
     connectedModel = nil
