@@ -11,7 +11,7 @@ export default function SettingsStack() {
     <Stack
       screenOptions={{
         headerShown: true,
-        headerBackTitle: "Back",
+        headerBackTitle: "",
         headerStyle: { backgroundColor: C.bg },
         headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
         headerTintColor: C.text,

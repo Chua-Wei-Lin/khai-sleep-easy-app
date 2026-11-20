@@ -1349,16 +1349,16 @@ const processReadQueue = useCallback(() => {
         const resolvedDevice = { ...device, model: effectiveModel };
         console.log("[O2Ring] connecting", resolvedDevice.name, "model:", effectiveModel);
 
+        // Set connected ref early so listeners know before async connect finishes
+        connectedDeviceRef.current = resolvedDevice;
+        setConnectedDevice(resolvedDevice);
+        rememberDevice(resolvedDevice);
+
         const connectPromise = O2Ring.connect(resolvedDevice.mac, resolvedDevice.model);
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Connection timed out. Please ensure the device is turned on and nearby.")), 12000)
         );
         await Promise.race([connectPromise, timeoutPromise]);
-
-        // Set connected ref early so listeners know
-        connectedDeviceRef.current = resolvedDevice;
-        setConnectedDevice(resolvedDevice);
-        rememberDevice(resolvedDevice);
 
         // Verify true device reachability (detect Android phantom connections when device is off)
         if (Platform.OS === "android") {
