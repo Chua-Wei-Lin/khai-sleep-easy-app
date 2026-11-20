@@ -286,20 +286,7 @@ export function O2RingProvider({ children }: { children: React.ReactNode }) {
 
   }, []);
 
-  useEffect(() => {
-    const subConn = O2Ring.addConnectedListener(async (e) => {
-      console.log("[O2Ring] onConnected event received:", e);
-      serviceReadyRef.current = true;
-      setServiceReady(true);
-      await startRealtimeStream();
-      try {
-        await O2Ring.setLiveWave(true);
-      } catch (err) {
-        console.warn("Error setting live wave on connect:", err);
-      }
-    });
-    return () => subConn.remove();
-  }, [startRealtimeStream]);
+
 
   useEffect(() => {
     if (!isNativeModuleAvailable()) {

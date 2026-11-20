@@ -600,7 +600,10 @@ public final class ViatomModule: Module {
       "onInfo",
       "onHistoryFile",
       "onReadProgress",
-      "onError"
+      "onError",
+      "onPpgPacket",
+      "onRtPpg",
+      "onBloodPressure"
     )
 
     OnStartObserving {
@@ -679,6 +682,30 @@ public final class ViatomModule: Module {
       return try await self.withManager { manager in
         try manager.readHistory(fileName: fileName)
       }
+    }
+
+    AsyncFunction("setLiveWave") { (enable: Bool) in
+      return true
+    }
+
+    AsyncFunction("setBpCalibration") { (sbp: Int, dbp: Int) in
+      return true
+    }
+
+    AsyncFunction("configurePpgUpload") { (url: String, auth: String, patientId: String) in
+      return false
+    }
+
+    AsyncFunction("startPpgCapture") { (patientId: String, prefix: String, chunkSeconds: Int) in
+      return ""
+    }
+
+    AsyncFunction("stopPpgCapture") {
+      return true
+    }
+
+    Function("logEvent") { (msg: String) in
+      return true
     }
   }
 }

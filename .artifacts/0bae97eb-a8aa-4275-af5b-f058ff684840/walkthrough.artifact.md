@@ -1,13 +1,13 @@
-# Single Unified `addConnectedListener` Consolidation Walkthrough
+# iOS Expo Module Definition Registration Walkthrough
 
-Successfully updated [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx).
+Successfully updated [ViatomModule.swift](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/packages/viatom-o2ring/ios/ViatomModule.swift).
 
 ## Changes Made
 
-### O2Ring Service Provider (`O2RingProvider.tsx`)
-- **Consolidated 4 Duplicate `addConnectedListener` Subscriptions**: Eliminated 3 duplicate `addConnectedListener` event subscriptions scattered across separate `useEffect` hooks in `O2RingProvider.tsx`.
-- **Single Unified Listener**: All connection events now pass through 1 single, clean, unified listener in the main setup lifecycle block. This completely stops connection listeners from racing against each other, eliminating duplicate `[O2Ring] onConnected event received` logs and preventing false `reason: 0` programatic disconnects.
+### iOS Expo Module Definition (`ViatomModule.swift`)
+- **Registered Missing Events (`onPpgPacket`, `onRtPpg`, `onBloodPressure`)**: Added missing events to Expo Module's `Events(...)` definition list in `ViatomModule.swift`, allowing `onPpgPacket` events to be received by JavaScript without silent dropping.
+- **Exported Missing Native Functions**: Exposed `setLiveWave`, `setBpCalibration`, `configurePpgUpload`, `startPpgCapture`, `stopPpgCapture`, and `logEvent` in `definition()`, preventing JavaScript from throwing `undefined is not a function` on iOS.
 
 ## Verification Results
-- Verified with `analyze_file` (0 errors found).
-- Connection listener fires exactly once per connection event.
+- Xcode compilation verified.
+- iOS events and function bridge exports registered completely.
