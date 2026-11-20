@@ -310,8 +310,8 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
 
     let hr = Double(realData.hr > 0 ? realData.hr : 75)
     var waveSamples: [Int] = []
-    for i in 0..<15 {
-      let t = Double(i) / 15.0
+    for i in 0..<64 {
+      let t = Double(i) / 64.0
       let val = Int(50.0 + 40.0 * sin(t * 2.0 * .pi * (hr / 60.0)))
       waveSamples.append(val)
     }

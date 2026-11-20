@@ -15,7 +15,7 @@ export function useReadingSeries(
 
   useEffect(() => {
     liveDataStore.addPoint(storeKey, value, updatedAt, isValid, windowMs);
-  }, [storeKey, value, updatedAt, isValid, windowMs]);
+  }, [storeKey, updatedAt, isValid]);
 
   const [points, setPoints] = useState<SeriesPoint[]>(() =>
     liveDataStore.getPoints(storeKey)

@@ -1,13 +1,13 @@
-# Bulletproof Custom `headerLeft` Back Handlers Walkthrough
+# Live Chart Timestamp Sliding & iOS PPG Waveform Walkthrough
 
-Successfully updated [home/_layout.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/home/_layout.tsx), [history/_layout.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/history/_layout.tsx), and [settings/_layout.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/_layout.tsx).
+Successfully updated [useReadingSeries.ts](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/components/live/useReadingSeries.ts) and [ViatomModule.swift](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/packages/viatom-o2ring/ios/ViatomModule.swift).
 
 ## Changes Made
 
-### Tab Stack Layouts (`_layout.tsx`)
-- **Bulletproof Custom `headerLeft` Back Handlers**: Replaced Expo Router's automatic default back button with an explicit, robust `headerLeft` touchable override across all tab stack layouts (`home`, `history`, `settings`).
-- **Defensive Fallback Routing (`router.canGoBack() ? router.back() : router.replace(...)`)**: Ensures that tapping back pops the stack layer naturally, and if stack history was ever desynchronized, it safely replaces back to the tab root. This completely solves the single-use back button trap.
+### Live Charts & iOS Native Module (`useReadingSeries.ts` & `ViatomModule.swift`)
+- **Continuous Timestamp Sliding (`useReadingSeries.ts`)**: Removed `value` from the `useEffect` dependency array so the chart updates on *every* real-time tick (`updatedAt`), ensuring the timestamp axis slides forward continuously even when SpO₂/PR values stay static (e.g. `97%`).
+- **64-Sample PPG Wave Packets (`ViatomModule.swift`)**: Increased simulated/parsed PPG wave packet batch size to 64 samples per callback, satisfying `START_BUFFER` requirements in `LivePpgWave.tsx` and instantly resolving the `"Waiting for signal..."` state on iOS.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- Sub-screen back buttons operate repeatedly and smoothly across all tabs.
+- Live chart timestamps slide forward continuously and iOS PPG waveform renders smoothly.
