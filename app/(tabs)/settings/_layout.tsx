@@ -17,7 +17,7 @@ export default function SettingsStack() {
         headerTintColor: C.text,
         contentStyle: { backgroundColor: C.bg },
         gestureEnabled: true,
-        animation: Platform.OS === "ios" ? "ios" : "slide_from_right",
+        animation: "slide_from_right",
       }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen

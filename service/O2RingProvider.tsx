@@ -79,6 +79,21 @@ type O2RingContextValue = {
 
 const O2RingContext = createContext<O2RingContextValue | null>(null);
 
+export function resolveDeviceModel(name?: string, rawModel?: number): number {
+  if (rawModel != null && rawModel !== 0) return rawModel;
+  const n = (name || "").toLowerCase().replace(/[\s_-]/g, "");
+  if (n.includes("kidso2") || n.includes("o2ring") || n.includes("wearo2")) {
+    return 4; // O2Ring / KidsO2 model ID
+  }
+  if (n.includes("checkme") || n.includes("bp2") || n.includes("ecg")) {
+    return 2; // Checkme / BP2 model ID
+  }
+  if (n.includes("o2w") || n.includes("o2watch") || n.includes("o2m")) {
+    return 1; // O2Watch / O2M model ID
+  }
+  return rawModel ?? 4;
+}
+
 export function O2RingProvider({ children }: { children: React.ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
@@ -1330,9 +1345,10 @@ const processReadQueue = useCallback(() => {
         setServiceReady(false);
         serviceReadyRef.current = false;
         setIosRealtimeReady(false);
-        console.log("[O2Ring] connecting", device.name, "model:", device.model);
+        const effectiveModel = resolveDeviceModel(device.name, device.model);
+        console.log("[O2Ring] connecting", device.name, "model:", effectiveModel);
 
-        const connectPromise = O2Ring.connect(device.mac, device.model);
+        const connectPromise = O2Ring.connect(device.mac, effectiveModel);
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Connection timed out. Please ensure the device is turned on and nearby.")), 12000)
         );

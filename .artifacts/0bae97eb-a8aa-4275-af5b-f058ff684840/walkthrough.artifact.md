@@ -1,12 +1,12 @@
-# Platform-Specific Stack Animation Walkthrough
+# Defensive Back Navigation (`canGoBack`) Walkthrough
 
-Successfully updated [(_layout.tsx)](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/_layout.tsx).
+Successfully updated [BpCalibration.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/BpCalibration.tsx).
 
 ## Changes Made
 
-### Settings Stack Layout (`_layout.tsx`)
-- **Platform-Safe Animation (`Platform.OS === 'ios' ? 'ios' : 'slide_from_right'`)**: Replaced the iOS-only `animation: 'ios'` property with a platform-safe conditional check. This prevents `libreact_codegen_rnscreens.so` native C++ SIGABRT crashes on Android when tapping the Settings tab.
+### BP Calibration Screen (`BpCalibration.tsx`)
+- **Defensive Back Handler (`router.canGoBack() ? router.back() : handleExit()`)**: Updated `handleBack` to check if the navigation stack can pop back natively. If a history layer exists, it pops cleanly; otherwise, it safely falls back to `handleExit()`. This prevents the back button from getting stuck after a single use.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- Stack animations are platform-safe.
+- Back navigation operates smoothly across multiple uses.

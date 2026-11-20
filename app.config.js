@@ -32,6 +32,7 @@ module.exports = ({ config }) => {
           "SleepEasy requires Bluetooth to connect to and sync data from your O2Ring device.",
         NSBluetoothPeripheralUsageDescription:
           "SleepEasy requires Bluetooth access to discover nearby O2Ring devices.",
+        UIBackgroundModes: ["bluetooth-central"],
         UIApplicationSceneManifest: {
           UIApplicationSupportsMultipleScenes: false,
           UISceneConfigurations: {

@@ -86,7 +86,11 @@ export default function BpCalibrationScreen() {
   };
 
   const handleBack = () => {
-    handleExit();
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      handleExit();
+    }
   };
 
   if (isLoading) return null;
