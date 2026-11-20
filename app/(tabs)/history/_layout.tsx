@@ -9,11 +9,11 @@ export default function HistoryStack() {
   return (
     <Stack
       screenOptions={{
-        headerBackTitle: "",
+        headerBackTitle: "Back",
         gestureEnabled: true,
         animation: "slide_from_right",
       }}>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="index" options={{ headerShown: false, title: t("history") }} />
       <Stack.Screen
         name="DetailedReport"
         options={{

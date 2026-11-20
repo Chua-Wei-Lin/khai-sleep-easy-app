@@ -1770,12 +1770,13 @@ const processReadQueue = useCallback(() => {
     };
   }, [isScanning]);
       useEffect(() => {
+        if (Platform.OS !== "android") return;
         if (!connectedDevice || isDownloadingHistory) return;
         let cancelled = false;
 
         const start = async () => {
           try {
-            if (Platform.OS === "android" && Number(Platform.Version) >= 33) {
+            if (Number(Platform.Version) >= 33) {
               await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
             }
             const patientId = patientIdRef.current ?? (await syncPatientId());
@@ -1788,7 +1789,7 @@ const processReadQueue = useCallback(() => {
               patientId
             )) === true;
             const dir = await O2Ring.startPpgCapture(patientId, `PPG_Raw_${last4}`, PPG_CHUNK_SECONDS);
-            if (cancelled) { O2Ring.stopPpgCapture().catch(() => {}); return; }
+            if (cancelled) { O2Ring.stopPpgCapture?.().catch(() => {}); return; }
             ppgDirRef.current = dir;
             console.log("[PPG] continuous capture started, chunks in", dir);
 
@@ -1805,15 +1806,18 @@ const processReadQueue = useCallback(() => {
         return () => {
           cancelled = true;
           clearTimeout(t);
-          // O2Ring.stopPpgCapture().catch(() => {}); // closes the open chunk; the listener above uploads it
+          if (typeof O2Ring.stopPpgCapture === "function") {
+            O2Ring.stopPpgCapture().catch(() => {});
+          }
         };
       }, [connectedDevice, isDownloadingHistory, flushPpgChunks]);
 
       // Pause recording while the ring's history downloads. Runs only when this flag changes,
       // not when the screen closes, so swiping the app away does not stop recording.
       useEffect(() => {
+        if (Platform.OS !== "android") return;
         if (isDownloadingHistory) {
-          O2Ring.stopPpgCapture().catch(() => {});
+          O2Ring.stopPpgCapture?.().catch(() => {});
         }
       }, [isDownloadingHistory]);
 

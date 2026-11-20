@@ -11,7 +11,7 @@ export default function SettingsStack() {
     <Stack
       screenOptions={{
         headerShown: true,
-        headerBackTitle: "",
+        headerBackTitle: "Back",
         headerStyle: { backgroundColor: C.bg },
         headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
         headerTintColor: C.text,
@@ -19,7 +19,7 @@ export default function SettingsStack() {
         gestureEnabled: true,
         animation: "slide_from_right",
       }}>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="index" options={{ headerShown: false, title: t("settings") }} />
       <Stack.Screen
         name="Profile"
         options={{
