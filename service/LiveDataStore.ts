@@ -17,13 +17,12 @@ class LiveDataStore {
     }
     const buf = this.buffers[key];
     const last = buf[buf.length - 1];
-    if (!last || last.t !== updatedAt) {
-      const cutoff = updatedAt - windowMs;
-      const next = buf.filter((p) => p.t >= cutoff);
-      next.push({ t: updatedAt, v: value });
-      this.buffers[key] = next;
-      this.notify(key);
-    }
+    const tToUse = last && updatedAt <= last.t ? last.t + 250 : updatedAt;
+    const cutoff = tToUse - windowMs;
+    const next = buf.filter((p) => p.t >= cutoff);
+    next.push({ t: tToUse, v: value });
+    this.buffers[key] = next;
+    this.notify(key);
   }
 
   public getPoints(key: string): SeriesPoint[] {

@@ -718,16 +718,17 @@ const processReadQueue = useCallback(() => {
       setServiceReady(true);
       startRealtimeStream();
 
-      syncPatientId()
-        .catch(() => null)
-        .finally(() => {
-          O2Ring.getInfo().catch((err) =>
-            console.warn(
-              "Error@O2RingProvider.tsx/getInfo (service ready): ",
-              err
-            )
-          );
-        });
+      syncPatientId().catch(() => null);
+
+      // Delay history sync by 5 seconds so real-time streaming gets priority on connection
+      setTimeout(() => {
+        O2Ring.getInfo().catch((err) =>
+          console.warn(
+            "Error@O2RingProvider.tsx/getInfo (service ready): ",
+            err
+          )
+        );
+      }, 5000);
     });
 
     return () => sub.remove();
