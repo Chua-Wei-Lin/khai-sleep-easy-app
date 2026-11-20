@@ -67,7 +67,7 @@ export default function LiveBpTrendChart({
   const commonTN = useMemo(() => {
     const maxSbp = safeSbp.length > 0 ? safeSbp[safeSbp.length - 1].t : 0;
     const maxDbp = safeDbp.length > 0 ? safeDbp[safeDbp.length - 1].t : 0;
-    return Math.max(maxSbp, maxDbp);
+    return Math.max(maxSbp, maxDbp, Date.now());
   }, [safeSbp, safeDbp]);
 
   const commonSpan = useMemo(() => {

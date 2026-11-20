@@ -16,6 +16,8 @@ import { Platform, NativeModules, PermissionsAndroid } from "react-native";
 import { API_DEV, API_PROD } from "@env";
 import { uploadRawPpgPayload, authHeader } from "../api/api";
 import { requireOptionalNativeModule } from "expo-modules-core";
+import { useReadingSeries, SeriesPoint } from "../components/live/useReadingSeries";
+import { calculateRespiratoryRate } from "./HaemodynamicCalculations";
 
 const isNativeModuleAvailable = (): boolean => {
   try {
@@ -61,6 +63,12 @@ type O2RingContextValue = {
   downloadProgress: number;
   downloadTotalFiles: number;
   downloadCompletedFiles: number;
+  spo2Series: SeriesPoint[];
+  prSeries: SeriesPoint[];
+  sbpSeries: SeriesPoint[];
+  dbpSeries: SeriesPoint[];
+  motionSeries: SeriesPoint[];
+  rrSeries: SeriesPoint[];
   requestPermissions: () => Promise<boolean>;
   startScan: () => Promise<boolean>;
   stopScan: () => Promise<void>;
@@ -1827,6 +1835,25 @@ const processReadQueue = useCallback(() => {
         }
       }, [isDownloadingHistory]);
 
+  const isValidSpo2 = (v: number) => v >= 20 && v <= 100;
+  const spo2Series = useReadingSeries(spo2, realtimeUpdatedAt, isValidSpo2, connectedDevice?.mac);
+  const isValidPr = (v: number) => v >= 20 && v <= 250;
+  const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac);
+  const isSignalActive = spo2 != null && spo2 >= 20 && pr != null && pr >= 20;
+  const isValidBpVal = (v: number) => v >= 30 && v <= 220;
+  const isBpValid = isSignalActive && sbp != null && dbp != null && sbp >= 30 && dbp >= 30;
+  const activeSbp = isBpValid ? Math.max(sbp, dbp) : null;
+  const activeDbp = isBpValid ? Math.min(sbp, dbp) : null;
+
+  const sbpSeries = useReadingSeries(activeSbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
+  const dbpSeries = useReadingSeries(activeDbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac);
+  const isValidMotion = (v: number) => v >= 0 && v <= 235;
+  const filteredMotion = motion != null ? Math.max(0, motion - 20) : 0;
+  const motionSeries = useReadingSeries(filteredMotion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac);
+  const rrValue = isSignalActive && pr != null && pr > 0 ? calculateRespiratoryRate([pr]) : null;
+  const isValidRr = (v: number) => v >= 5 && v <= 60;
+  const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac);
+
   const value = useMemo(
     () => ({
       initializing,
@@ -1855,6 +1882,12 @@ const processReadQueue = useCallback(() => {
       downloadProgress,
       downloadTotalFiles: downloadCounts.total,
       downloadCompletedFiles: downloadCounts.completed,
+      spo2Series,
+      prSeries,
+      sbpSeries,
+      dbpSeries,
+      motionSeries,
+      rrSeries,
       requestPermissions,
       startScan,
       stopScan,
@@ -1914,6 +1947,12 @@ const processReadQueue = useCallback(() => {
       clearDevices,
       refreshRealtime,
       requestHistorySync,
+      spo2Series,
+      prSeries,
+      sbpSeries,
+      dbpSeries,
+      motionSeries,
+      rrSeries,
     ]
   );
 

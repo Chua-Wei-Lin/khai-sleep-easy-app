@@ -54,7 +54,7 @@ type WaveProps = {
   ppgHz: number;
 };
 
-// Moving layer: only this component re-renders while the wave scrolls.
+// Moving layer: imperative updates via setNativeProps to prevent state re-render loops.
 const WaveLayer = React.memo(function WaveLayer({
   run,
   width,
@@ -64,8 +64,16 @@ const WaveLayer = React.memo(function WaveLayer({
   waitingText,
   ppgHz,
 }: WaveProps) {
-  const [d, setD] = useState("");
   const [waiting, setWaiting] = useState(true);
+  const waitingRef = useRef(true);
+  const pathRef = useRef<any>(null);
+
+  const widthRef = useRef(width);
+  const heightRef = useRef(height);
+  useEffect(() => {
+    widthRef.current = width;
+    heightRef.current = height;
+  }, [width, height]);
 
   // Keep latest ppgHz in a ref so useEffect does NOT need to re-subscribe to native BLE stream when ppgHz changes
   const ppgHzRef = useRef(ppgHz);
@@ -82,12 +90,9 @@ const WaveLayer = React.memo(function WaveLayer({
     let carry = 0;
     let last = Date.now();
     let lastData = 0;
-    const pad = 6;
-    const h = height - pad * 2;
-    const span = RANGE_MAX - RANGE_MIN;
 
     try {
-      O2Ring.setLiveWave(true);
+      O2Ring.setLiveWave?.(true);
     } catch {}
 
     let sub: { remove: () => void } | null = null;
@@ -100,9 +105,14 @@ const WaveLayer = React.memo(function WaveLayer({
     } catch {}
 
     const tick = () => {
+      const w = widthRef.current;
+      const hTotal = heightRef.current;
+      const pad = 6;
+      const h = hTotal - pad * 2;
+      const span = RANGE_MAX - RANGE_MIN;
+
       const hz = ppgHzRef.current;
       const decim = hz === 50 ? 5 : hz === 75 ? 4 : hz === 100 ? 3 : 2;
-      const stepX = width / (WINDOW_SAMPLES - 1);
 
       const now = Date.now();
       let n = 0;
@@ -127,28 +137,35 @@ const WaveLayer = React.memo(function WaveLayer({
         }
       }
 
-      setWaiting(now - lastData > 3000);
+      const isWaitingNow = now - lastData > 3000;
+      if (isWaitingNow !== waitingRef.current) {
+        waitingRef.current = isWaitingNow;
+        setWaiting(isWaitingNow);
+      }
 
-      if (buf.length === 0) return;
+      if (buf.length === 0 || w <= 0) return;
 
+      let nextD = "";
       if (buf.length === 1) {
         const v = Math.min(RANGE_MAX, Math.max(RANGE_MIN, buf[0]));
         const f = (v - RANGE_MIN) / span;
         const y = pad + (FLIP ? f : 1 - f) * h;
-        setD(`M0 ${y.toFixed(1)} L${width.toFixed(1)} ${y.toFixed(1)}`);
-        return;
+        nextD = `M0 ${y.toFixed(1)} L${w.toFixed(1)} ${y.toFixed(1)}`;
+      } else {
+        // Left-to-right sweep progression using current ppgHzRef decimation
+        const parts: string[] = [];
+        for (let i = 0; i < buf.length; i += decim) {
+          const v = Math.min(RANGE_MAX, Math.max(RANGE_MIN, buf[i]));
+          const f = (v - RANGE_MIN) / span;
+          const y = pad + (FLIP ? f : 1 - f) * h;
+          const x = (i / (WINDOW_SAMPLES - 1)) * w;
+          parts.push((i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1));
+        }
+        nextD = parts.join(" ");
       }
 
-      // Left-to-right sweep progression using current ppgHzRef decimation
-      const parts: string[] = [];
-      for (let i = 0; i < buf.length; i += decim) {
-        const v = Math.min(RANGE_MAX, Math.max(RANGE_MIN, buf[i]));
-        const f = (v - RANGE_MIN) / span;
-        const y = pad + (FLIP ? f : 1 - f) * h;
-        const x = (i / (WINDOW_SAMPLES - 1)) * width;
-        parts.push((i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1));
-      }
-      setD(parts.join(" "));
+      // Imperative update bypassing React state re-render loop completely
+      pathRef.current?.setNativeProps({ d: nextD });
     };
 
     const timer = setInterval(tick, TICK_MS);
@@ -156,26 +173,27 @@ const WaveLayer = React.memo(function WaveLayer({
       clearInterval(timer);
       try {
         sub?.remove();
+        O2Ring.setLiveWave?.(false);
       } catch {}
-      setD("");
       setWaiting(true);
+      waitingRef.current = true;
+      pathRef.current?.setNativeProps({ d: "" });
     };
-  }, [run, width, height]);
+  }, [run]);
 
   return (
     <>
-      {d !== "" && (
-        <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-          <Path
-            d={d}
-            fill="none"
-            stroke={color}
-            strokeWidth={2.2}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        </Svg>
-      )}
+      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+        <Path
+          ref={pathRef}
+          d=""
+          fill="none"
+          stroke={color}
+          strokeWidth={2.2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      </Svg>
       {waiting && (
         <Text style={[styles.waiting, { color: textColor, top: height / 2 - 10 }]}>
           {waitingText}
@@ -231,8 +249,10 @@ export default function LivePpgWave({
 
   const run = active && focused && appActive && width > 0;
 
-  const onLayout = (e: LayoutChangeEvent) =>
-    setWidth(Math.round(e.nativeEvent.layout.width));
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    const nextW = Math.round(e.nativeEvent.layout.width);
+    setWidth((prev) => (prev === nextW ? prev : nextW));
+  }, []);
 
   return (
     <View

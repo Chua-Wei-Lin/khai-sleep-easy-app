@@ -140,6 +140,12 @@ export default function Home() {
     connecting,
     devices,
     isScanning,
+    spo2Series,
+    prSeries,
+    sbpSeries,
+    dbpSeries,
+    motionSeries,
+    rrSeries,
   } = useO2Ring();
 
   const [knownDeviceMenuVisible, setKnownDeviceMenuVisible] = useState(false);
@@ -301,23 +307,9 @@ export default function Home() {
     }, [connectedDevice, startScan, stopScan])
   );
 
-  const isValidSpo2 = (v: number) => v >= 20 && v <= 100;
-  const spo2Series = useReadingSeries(spo2, realtimeUpdatedAt, isValidSpo2, connectedDevice?.mac, "spo2");
-  const isValidPr = (v: number) => v >= 20 && v <= 250;
-  const prSeries = useReadingSeries(pr, realtimeUpdatedAt, isValidPr, connectedDevice?.mac, "pr");
   const isSignalActive = spo2 != null && spo2 >= 20 && pr != null && pr >= 20;
-  const isBpValid = isSignalActive && sbp != null && dbp != null && sbp >= 30 && dbp >= 30;
-  const activeSbp = isBpValid ? Math.max(sbp, dbp) : null;
-  const activeDbp = isBpValid ? Math.min(sbp, dbp) : null;
-
-  const sbpSeries = useReadingSeries(activeSbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac, "sbp");
-  const dbpSeries = useReadingSeries(activeDbp, realtimeUpdatedAt, isValidBpVal, connectedDevice?.mac, "dbp");
-  const isValidMotion = (v: number) => v >= 0 && v <= 235;
   const filteredMotion = motion != null ? Math.max(0, motion - 20) : 0;
-  const motionSeries = useReadingSeries(filteredMotion, realtimeUpdatedAt, isValidMotion, connectedDevice?.mac, "motion");
   const rrValue = isSignalActive && pr != null && pr > 0 ? calculateRespiratoryRate([pr]) : null;
-  const isValidRr = (v: number) => v >= 5 && v <= 60;
-  const rrSeries = useReadingSeries(rrValue, realtimeUpdatedAt, isValidRr, connectedDevice?.mac, "rr");
 
   const displaySpo2 =
     spo2 == null || spo2 < 20 || spo2 > 100 ? "--" : `${spo2}`;

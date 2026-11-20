@@ -1,33 +1,37 @@
-import { useEffect, useState } from "react";
-import { liveDataStore, SeriesPoint } from "../../service/LiveDataStore";
+import { useEffect, useRef, useState } from "react";
 
-export type { SeriesPoint };
+export type SeriesPoint = { t: number; v: number };
 
 export function useReadingSeries(
   value: number | null | undefined,
   updatedAt: number | null | undefined,
   isValid: (v: number) => boolean,
   resetKey: unknown,
-  metricName: string = "series",
   windowMs: number = 30 * 60 * 1000
 ): SeriesPoint[] {
-  const storeKey = `${String(resetKey ?? "default")}-${metricName}`;
+  const [points, setPoints] = useState<SeriesPoint[]>([]);
+  const lastStamp = useRef<number | null>(null);
 
   useEffect(() => {
-    liveDataStore.addPoint(storeKey, value, updatedAt, isValid, windowMs);
-  }, [storeKey, updatedAt, isValid]);
-
-  const [points, setPoints] = useState<SeriesPoint[]>(() =>
-    liveDataStore.getPoints(storeKey)
-  );
+    setPoints([]);
+    lastStamp.current = null;
+  }, [resetKey]);
 
   useEffect(() => {
-    setPoints([...liveDataStore.getPoints(storeKey)]);
-    const unsubscribe = liveDataStore.subscribe(storeKey, (updated) => {
-      setPoints([...updated]);
+    if (updatedAt == null || updatedAt === lastStamp.current) return;
+    lastStamp.current = updatedAt;
+    if (value == null || !isValid(value)) return;
+
+    setPoints((prev) => {
+      const cutoff = updatedAt - windowMs;
+      const next =
+        prev.length > 0 && prev[0].t < cutoff
+          ? prev.filter((p) => p.t >= cutoff)
+          : prev.slice();
+      next.push({ t: updatedAt, v: value });
+      return next;
     });
-    return unsubscribe;
-  }, [storeKey]);
+  }, [value, updatedAt, isValid, windowMs]);
 
   return points;
 }
