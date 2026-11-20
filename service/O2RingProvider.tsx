@@ -467,20 +467,7 @@ const processReadQueue = useCallback(() => {
   // -------------------
   // MARK: O2Ring Connection & Realtime
   // -------------------
-  useEffect(() => {
-    const subConn = O2Ring.addConnectedListener(async (e) => {
-      console.log("[O2Ring] onConnected event received:", e);
-      serviceReadyRef.current = true;
-      setServiceReady(true);
-      await startRealtimeStream();
-      try {
-        await O2Ring.setLiveWave(true);
-      } catch (err) {
-        console.warn("Error setting live wave on connect:", err);
-      }
-    });
-    return () => subConn.remove();
-  }, [startRealtimeStream]);
+
 
   useEffect(() => {
     connectedDeviceRef.current = connectedDevice;
@@ -675,50 +662,7 @@ const processReadQueue = useCallback(() => {
     }
   }, []);
 
-  useEffect(() => {
-    const subConn = O2Ring.addConnectedListener(async (e: any) => {
-      console.log("[O2Ring] onConnected event received:", e);
 
-      // Verify true reachability to filter out Android BLE phantom connections for offline devices
-      if (Platform.OS === "android") {
-        try {
-          const infoPromise = O2Ring.getInfo();
-          const infoTimeout = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Device offline")), 3000)
-          );
-          await Promise.race([infoPromise, infoTimeout]);
-        } catch (err) {
-          console.warn("[O2Ring] Phantom connection detected for offline device. Disconnecting...");
-          intentionalDisconnectRef.current = true;
-          await O2Ring.disconnect().catch(() => {});
-          intentionalDisconnectRef.current = false;
-          return;
-        }
-      }
-
-      const mac = e?.mac || e?.device?.mac;
-      const model = e?.model ?? e?.device?.model ?? 4;
-      if (mac) {
-        const recoveredDevice = {
-          mac,
-          name: e?.name || e?.device?.name || connectedDeviceRef.current?.name || "O2Device",
-          model
-        };
-        connectedDeviceRef.current = recoveredDevice;
-        setConnectedDevice(recoveredDevice);
-      }
-      resetSessionCalibration();
-      serviceReadyRef.current = true;
-      setServiceReady(true);
-      await startRealtimeStream();
-      try {
-        await O2Ring.setLiveWave(true);
-      } catch (err) {
-        console.warn("Error setting live wave on connect:", err);
-      }
-    });
-    return () => subConn.remove();
-  }, [startRealtimeStream]);
 
   useEffect(() => {
     const sub = O2Ring.addServiceReadyListener(() => {
@@ -810,11 +754,25 @@ const processReadQueue = useCallback(() => {
   // Everything inside the setup callback deals with native events so we centralize
   // cleanup logic here as well.
   useEffect(() => {
-    const subConn = O2Ring.addConnectedListener((e) => {
+    const subConn = O2Ring.addConnectedListener(async (e: any) => {
       console.log("[O2Ring] onConnected event received:", e);
+      const mac = e?.mac || e?.device?.mac;
+      const model = e?.model ?? e?.device?.model ?? 4;
+      if (mac && !connectedDeviceRef.current) {
+        const recoveredDevice = {
+          mac,
+          name: e?.name || e?.device?.name || "O2Ring 0401",
+          model
+        };
+        connectedDeviceRef.current = recoveredDevice;
+        setConnectedDevice(recoveredDevice);
+      }
       serviceReadyRef.current = true;
       setServiceReady(true);
-      startRealtimeStream();
+      await startRealtimeStream();
+      try {
+        await O2Ring.setLiveWave(true);
+      } catch {}
     });
 
     let subRt: Subscription | null = null;

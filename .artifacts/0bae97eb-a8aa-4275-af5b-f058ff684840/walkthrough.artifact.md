@@ -1,12 +1,13 @@
-# Live Pulse Rate Filter Unlock Walkthrough
+# Single Unified `addConnectedListener` Consolidation Walkthrough
 
 Successfully updated [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx).
 
 ## Changes Made
 
 ### O2Ring Service Provider (`O2RingProvider.tsx`)
-- **Unlocked Live PR Updates**: Removed `validPr = lastPr` rigid outlier clamping inside `addRealtimeListener`. Previously, any pulse rate change greater than 20 bpm caused the filter to force `validPr` back to the old value, freezing live readings indefinitely. Removing this trap allows live PR and SpO₂ readings to update freely and dynamically in real time.
+- **Consolidated 4 Duplicate `addConnectedListener` Subscriptions**: Eliminated 3 duplicate `addConnectedListener` event subscriptions scattered across separate `useEffect` hooks in `O2RingProvider.tsx`.
+- **Single Unified Listener**: All connection events now pass through 1 single, clean, unified listener in the main setup lifecycle block. This completely stops connection listeners from racing against each other, eliminating duplicate `[O2Ring] onConnected event received` logs and preventing false `reason: 0` programatic disconnects.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- Live PR and SpO₂ update dynamically on every tick.
+- Connection listener fires exactly once per connection event.
