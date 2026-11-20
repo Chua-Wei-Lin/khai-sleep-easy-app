@@ -137,7 +137,7 @@ const WaveLayer = React.memo(function WaveLayer({
         }
       }
 
-      const isWaitingNow = now - lastData > 3000;
+      const isWaitingNow = (now - lastData > 6000) && queue.length === 0 && buf.length === 0;
       if (isWaitingNow !== waitingRef.current) {
         waitingRef.current = isWaitingNow;
         setWaiting(isWaitingNow);

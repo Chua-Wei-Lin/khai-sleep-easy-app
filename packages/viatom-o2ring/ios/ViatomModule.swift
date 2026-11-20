@@ -685,7 +685,13 @@ public final class ViatomModule: Module {
     }
 
     AsyncFunction("setLiveWave") { (enable: Bool) in
-      return true
+      return await self.withManager { manager in
+        if enable {
+          manager.communicator?.beginGetRealData()
+          manager.communicator?.beginGetRealWave()
+        }
+        return true
+      }
     }
 
     AsyncFunction("setBpCalibration") { (sbp: Int, dbp: Int) in
