@@ -218,6 +218,9 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
     util.a5Delegate = nil
     util.timeout = 10000
     util.peripheral = peripheral
+    if let delegateObj = util as? CBPeripheralDelegate {
+      peripheral.delegate = delegateObj
+    }
     communicator = util
 
     emit("onConnected", [

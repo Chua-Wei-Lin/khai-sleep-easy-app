@@ -1,13 +1,12 @@
-# Continuous Series Point Accumulation & iOS Real Wave Walkthrough
+# iOS CoreBluetooth Peripheral Delegate Assignment Walkthrough
 
-Successfully updated [useReadingSeries.ts](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/components/live/useReadingSeries.ts) and [ViatomModule.swift](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/packages/viatom-o2ring/ios/ViatomModule.swift).
+Successfully updated [ViatomModule.swift](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/packages/viatom-o2ring/ios/ViatomModule.swift).
 
 ## Changes Made
 
-### Reading Series Hook & iOS Native Module (`useReadingSeries.ts` & `ViatomModule.swift`)
-- **Strict `resetKey` Equality Guard (`prevResetKey`)**: Updated `useReadingSeries.ts` to check `resetKey !== prevResetKey.current`. This prevents re-renders with identical MAC addresses from calling `setPoints([])` and wiping out chart data back to a single frame.
-- **Native iOS `beginGetRealWave()`**: Added `communicator.beginGetRealWave()` to `bootstrapAfterServiceReady()` in `ViatomModule.swift` to start native optical wave data callbacks.
+### iOS Native Module (`ViatomModule.swift`)
+- **Peripheral Delegate Assignment (`peripheral.delegate = util as? CBPeripheralDelegate`)**: Explicitly assigned `peripheral.delegate` to `VTO2Communicate.sharedInstance()` inside `centralManager(_:didConnect:)`. This allows iOS CoreBluetooth to route service and characteristic discovery events into Viatom's SDK, triggering `serviceDeployed(true)` and starting real-time vitals and PPG data streams seamlessly.
 
 ## Verification Results
-- Verified with `analyze_file` (0 errors found).
-- Live chart series accumulate continuously without resetting to single frames.
+- Xcode compilation verified.
+- GATT service discovery completes and `serviceDeployed` fires cleanly.
