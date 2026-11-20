@@ -1,12 +1,12 @@
-# Relative Route Paths for Settings Sub-Tabs Walkthrough
+# Resolved Device State Propagation Walkthrough
 
-Successfully updated [index.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/app/(tabs)/settings/index.tsx).
+Successfully updated [O2RingProvider.tsx](file:///C:/Users/Wei Lin/Documents/GitHub/khai-sleep-easy-app/service/O2RingProvider.tsx).
 
 ## Changes Made
 
-### Settings Index (`index.tsx`)
-- **Relative Route Paths (`./Profile`, `./Language`, `./PpgHz`, `./ChartVisibility`)**: Converted absolute paths (`/(tabs)/settings/...`) to relative paths (`./...`). This forces Expo Router to push sub-screens onto the active stack correctly rather than treating them as tab switches, permanently resolving the single-use back button trap.
+### O2Ring Service Provider (`O2RingProvider.tsx`)
+- **Removed Duplicate `setConnectedDevice(device)` Override**: Removed duplicate reference assignment that was overwriting `resolvedDevice` with original `device` (model: 0) right before the catch block, ensuring `resolvedDevice` with model `4` is preserved throughout connection state and error logging.
 
 ## Verification Results
 - Verified with `analyze_file` (0 errors found).
-- Sub-tab back buttons work repeatedly without getting stuck.
+- Resolved model persists correctly without reverting to model 0.

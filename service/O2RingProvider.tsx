@@ -1361,17 +1361,19 @@ const processReadQueue = useCallback(() => {
         rememberDevice(resolvedDevice);
 
         // Verify true device reachability (detect Android phantom connections when device is off)
-        try {
-          const infoPromise = O2Ring.getInfo();
-          const infoTimeout = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Device is offline")), 5000)
-          );
-          await Promise.race([infoPromise, infoTimeout]);
-        } catch (err) {
-          await O2Ring.disconnect().catch(() => {});
-          connectedDeviceRef.current = null;
-          setConnectedDevice(null);
-          throw new Error("Device is turned off or unreachable. Please turn on your O2Ring.");
+        if (Platform.OS === "android") {
+          try {
+            const infoPromise = O2Ring.getInfo();
+            const infoTimeout = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Device is offline")), 5000)
+            );
+            await Promise.race([infoPromise, infoTimeout]);
+          } catch (err) {
+            await O2Ring.disconnect().catch(() => {});
+            connectedDeviceRef.current = null;
+            setConnectedDevice(null);
+            throw new Error("Device is turned off or unreachable. Please turn on your O2Ring.");
+          }
         }
 
         // Apply saved BP calibration once upon successful connection
@@ -1386,10 +1388,6 @@ const processReadQueue = useCallback(() => {
           }
         }).catch(() => {});
 
-        // Mark as connected; realtime will start when onServiceReady fires
-        setConnectedDevice(device);
-        rememberDevice(device);
-
           return true;
         } catch (e: any) {
           intentionalDisconnectRef.current = true;
@@ -1399,7 +1397,7 @@ const processReadQueue = useCallback(() => {
             message: e?.message,
             code: e?.code,
             stack: e?.stack,
-            device,
+            device: resolvedDevice,
           });
           Alert.alert("Connection Failed", e?.message ?? "Failed to connect to device. Please try again.");
           return false;
