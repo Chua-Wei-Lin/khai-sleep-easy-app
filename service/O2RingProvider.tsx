@@ -857,21 +857,21 @@ const processReadQueue = useCallback(() => {
         let validSpo2 = rt.spo2;
         if (validSpo2 != null && (validSpo2 < 50 || validSpo2 > 100)) validSpo2 = null;
 
-        if (validSpo2 == null || validSpo2 <= 0 || validPr == null || validPr <= 0) {
+        const connectedDuration = connectionTimeRef.current ? Date.now() - connectionTimeRef.current : 0;
+        const isArmed = serviceReadyRef.current && connectedDuration > 6000;
+
+        if (isArmed && (validSpo2 == null || validSpo2 <= 0 || validPr == null || validPr <= 0)) {
           offFingerCountRef.current++;
-          if (offFingerCountRef.current >= 2 && connectedDeviceRef.current && !isAutoDisconnectActiveRef.current && !connectingRef.current) {
-            const connectedDuration = connectionTimeRef.current ? Date.now() - connectionTimeRef.current : 0;
-            if (serviceReadyRef.current && connectedDuration > 6000) {
-              if (!offFingerTimerRef.current) {
-                console.log("[O2Ring] Finger removal detected. Waiting 3s before starting sync countdown...");
-                offFingerTimerRef.current = setTimeout(() => {
-                  offFingerTimerRef.current = null;
-                  if (connectedDeviceRef.current && !isAutoDisconnectActiveRef.current) {
-                    isAutoDisconnectActiveRef.current = true;
-                    startAutoDisconnectCountdown();
-                  }
-                }, 3000);
-              }
+          if (offFingerCountRef.current >= 3 && connectedDeviceRef.current && !isAutoDisconnectActiveRef.current && !connectingRef.current) {
+            if (!offFingerTimerRef.current) {
+              console.log("[O2Ring] Finger removal detected. Waiting 3s before starting sync countdown...");
+              offFingerTimerRef.current = setTimeout(() => {
+                offFingerTimerRef.current = null;
+                if (connectedDeviceRef.current && !isAutoDisconnectActiveRef.current) {
+                  isAutoDisconnectActiveRef.current = true;
+                  startAutoDisconnectCountdown();
+                }
+              }, 3000);
             }
           }
         } else {

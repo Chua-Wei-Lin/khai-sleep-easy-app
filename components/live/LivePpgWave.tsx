@@ -183,17 +183,19 @@ const WaveLayer = React.memo(function WaveLayer({
 
   return (
     <>
-      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-        <Path
-          ref={pathRef}
-          d=""
-          fill="none"
-          stroke={color}
-          strokeWidth={2.2}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-      </Svg>
+      {width > 0 && height > 0 && (
+        <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+          <Path
+            ref={pathRef}
+            d=""
+            fill="none"
+            stroke={color}
+            strokeWidth={2.2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </Svg>
+      )}
       {waiting && (
         <Text style={[styles.waiting, { color: textColor, top: height / 2 - 10 }]}>
           {waitingText}
