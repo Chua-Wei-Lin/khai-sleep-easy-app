@@ -1,6 +1,8 @@
-import { Stack } from "expo-router";
+import { TouchableOpacity } from "react-native";
+import { Stack, router } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../../theme/ThemeProvider";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function HistoryStack() {
   const { t } = useTranslation();
@@ -9,7 +11,7 @@ export default function HistoryStack() {
   return (
     <Stack
       screenOptions={{
-        headerBackTitle: "Back",
+        headerBackTitle: "",
         gestureEnabled: true,
         animation: "slide_from_right",
       }}>
@@ -21,6 +23,20 @@ export default function HistoryStack() {
           headerStyle: { backgroundColor: C.bg },
           headerTitleStyle: [{ color: C.text, ...F.title, fontSize: 20 }],
           headerTintColor: C.text,
+          headerLeft: ({ tintColor }) => (
+            <TouchableOpacity
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace("/(tabs)/history");
+                }
+              }}
+              style={{ marginRight: 12, padding: 4 }}
+              activeOpacity={0.7}>
+              <Ionicons name="arrow-back" size={24} color={tintColor} />
+            </TouchableOpacity>
+          ),
         }}
       />
     </Stack>

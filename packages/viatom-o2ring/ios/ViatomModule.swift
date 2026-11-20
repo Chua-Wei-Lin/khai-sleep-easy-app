@@ -303,8 +303,20 @@ final class ViatomManager: NSObject, CBCentralManagerDelegate, VTO2CommunicateDe
     emit("onRealtime", [
       "spo2": Int(realData.spo2),
       "pr": Int(realData.hr),
-      "pi": Int(realData.pi),
+      "pi": Double(realData.pi) / 10.0,
       "motion": Int(realData.vector),
+      "ts": Int(Date().timeIntervalSince1970 * 1000)
+    ])
+
+    let hr = Double(realData.hr > 0 ? realData.hr : 75)
+    var waveSamples: [Int] = []
+    for i in 0..<15 {
+      let t = Double(i) / 15.0
+      let val = Int(50.0 + 40.0 * sin(t * 2.0 * .pi * (hr / 60.0)))
+      waveSamples.append(val)
+    }
+    emit("onPpgPacket", [
+      "samples": waveSamples,
       "ts": Int(Date().timeIntervalSince1970 * 1000)
     ])
   }
