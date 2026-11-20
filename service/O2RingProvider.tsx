@@ -671,18 +671,20 @@ const processReadQueue = useCallback(() => {
       console.log("[O2Ring] onConnected event received:", e);
 
       // Verify true reachability to filter out Android BLE phantom connections for offline devices
-      try {
-        const infoPromise = O2Ring.getInfo();
-        const infoTimeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Device offline")), 3000)
-        );
-        await Promise.race([infoPromise, infoTimeout]);
-      } catch (err) {
-        console.warn("[O2Ring] Phantom connection detected for offline device. Disconnecting...");
-        intentionalDisconnectRef.current = true;
-        await O2Ring.disconnect().catch(() => {});
-        intentionalDisconnectRef.current = false;
-        return;
+      if (Platform.OS === "android") {
+        try {
+          const infoPromise = O2Ring.getInfo();
+          const infoTimeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Device offline")), 3000)
+          );
+          await Promise.race([infoPromise, infoTimeout]);
+        } catch (err) {
+          console.warn("[O2Ring] Phantom connection detected for offline device. Disconnecting...");
+          intentionalDisconnectRef.current = true;
+          await O2Ring.disconnect().catch(() => {});
+          intentionalDisconnectRef.current = false;
+          return;
+        }
       }
 
       const mac = e?.mac || e?.device?.mac;

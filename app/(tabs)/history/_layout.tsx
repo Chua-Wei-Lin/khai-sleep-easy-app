@@ -7,7 +7,12 @@ export default function HistoryStack() {
   const { colors: C, fonts: F } = useTheme();
 
   return (
-    <Stack>
+    <Stack
+      screenOptions={{
+        headerBackTitle: "",
+        gestureEnabled: true,
+        animation: "slide_from_right",
+      }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen
         name="DetailedReport"
